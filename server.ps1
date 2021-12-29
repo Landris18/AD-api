@@ -29,7 +29,7 @@ Start-PodeServer {
 
 
     # Récupération depuis un JSON
-    Add-PodeRoute -Method Post -Path '/api/users' -ScriptBlock {
+    Add-PodeRoute -Method Post -Path '/api/users' -EndpointName $endpointname -ScriptBlock {
         Write-PodeJsonResponse -Value @{
             Name = $WebEvent.Data.name
             UserId = $WebEvent.Data.userId
