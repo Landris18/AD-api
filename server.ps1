@@ -7,7 +7,7 @@ Start-PodeServer {
     
     Enable-PodeSessionMiddleware -Duration 120 -Extend
 
-    New-PodeAuthScheme -Form | Add-PodeAuthWindowsAd -Name 'Login'
+    New-PodeAuthScheme -Form | Add-PodeAuthWindowsAd -Name 'Login' -Fqdn 'test.example.com' -Domain 'testdomain'
 
     Add-PodeEndpoint -Address $address -Port $port -Protocol $protocol -Name $endpointname
 
