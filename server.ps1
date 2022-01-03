@@ -4,9 +4,18 @@ Start-PodeServer {
     $port = 6010
     $protocol = "Http"
     $endpointname = "AD-api"
+    
+    Enable-PodeSessionMiddleware -Duration 120 -Extend
 
+    New-PodeAuthScheme -Form | Add-PodeAuthWindowsAd -Name 'Login'
 
     Add-PodeEndpoint -Address $address -Port $port -Protocol $protocol -Name $endpointname
+
+
+    # Récupérer les informations lors d'un login
+    Add-PodeRoute -Method Get -Path '/info' -EndpointName $endpointname -Authentication 'Login' -ScriptBlock {
+        Write-Host $WebEvent.Auth.User.Username
+    }
 
     # La route principale du serveur
     Add-PodeRoute -Method Get -Path "/" -EndpointName $endpointname -ScriptBlock {
