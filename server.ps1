@@ -4,10 +4,11 @@ Start-PodeServer {
     $port = 6010
     $protocol = "Http"
     $endpointname = "AD-api"
+    $domain = "server-ad.map"
     
     Enable-PodeSessionMiddleware -Duration 120 -Extend
 
-    New-PodeAuthScheme -Form | Add-PodeAuthWindowsAd -Name 'Login' -Fqdn 'test.example.com' -Domain 'testdomain'
+    New-PodeAuthScheme -Form | Add-PodeAuthWindowsAd -Name 'Login' -Fqdn $domain -Domain 'SERVER-AD'
 
     Add-PodeEndpoint -Address $address -Port $port -Protocol $protocol -Name $endpointname
 
@@ -53,6 +54,25 @@ Start-PodeServer {
     )
 
 
+    # Création d'un utilisateur
+    Add-PodeRoute -Method Post -Path '/api/create_user' -EndpointName $endpointname -Authentication 'Login' -ScriptBlock {
+        try{
+            New-ADUser `
+            -Name (Get-Culture).TextInfo.ToTitleCase($WebEvent.Data.nom.ToLower())+" "+$WebEvent.Data.prenoms `
+            -GivenName (Get-Culture).TextInfo.ToTitleCase($WebEvent.Data.nom.ToLower()) `
+            -Surname $WebEvent.Data.surnom `
+            -SamAccountName $WebEvent.Data.surnom.ToLower() `
+            -AccountPassword (ConvertTo-SecureString -AsPlainText "****" -Force) `
+            -UserPrincipalName $WebEvent.Data.surnom+"@"+$domain `
+            -ChangePasswordAtLogon $True `
+            -Enabled $True
+        }
+        catch{
+            Write-Host $_
+        }
+    } 
+
+
     # Récupération d'un query (http://localhost:6010/users/?userId=12345)
     Add-PodeRoute -Method Get -Path '/users/' -EndpointName $endpointname -ScriptBlock {
         Write-PodeJsonResponse -Value @{
@@ -68,6 +88,14 @@ Start-PodeServer {
 }
 
 
-# Authentication active directory
 # Try except and response
-# Connect to a database for training (PostgreSQL)
+
+#New-ADUser `
+#-Name "Rasendranirina Manankoraisina Daniel" `
+#-GivenName "Rasendranirina" `
+#-Surname "Daniel" `
+#-SamAccountName "daniel" `
+#-AccountPassword (ConvertTo-SecureString -AsPlainText "win10**18" -Force) `
+#-UserPrincipalName "daniel@server-ad.map" `
+#-ChangePasswordAtLogon $True `
+#-Enabled $True
