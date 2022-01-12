@@ -58,12 +58,12 @@ Start-PodeServer {
     Add-PodeRoute -Method Post -Path '/api/create_user' -EndpointName $endpointname -Authentication 'Login' -ScriptBlock {
         try{
             New-ADUser `
-            -Name (Get-Culture).TextInfo.ToTitleCase($WebEvent.Data.nom.ToLower())+" "+$WebEvent.Data.prenoms `
+            -Name "(Get-Culture).TextInfo.ToTitleCase($WebEvent.Data.nom.ToLower()) $WebEvent.Data.prenoms" `
             -GivenName (Get-Culture).TextInfo.ToTitleCase($WebEvent.Data.nom.ToLower()) `
             -Surname $WebEvent.Data.surnom `
             -SamAccountName $WebEvent.Data.surnom.ToLower() `
             -AccountPassword (ConvertTo-SecureString -AsPlainText "****" -Force) `
-            -UserPrincipalName $WebEvent.Data.surnom+"@"+$domain `
+            -UserPrincipalName "$WebEvent.Data.surnom@$domain" `
             -ChangePasswordAtLogon $True `
             -Enabled $True
         }
