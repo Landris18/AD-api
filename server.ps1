@@ -67,6 +67,8 @@ Start-PodeServer {
             $UserPrincipalName = "$surnomLower@$domain"
             $description = $WebEvent.Data.commentaire
 
+            $poste = $WebEvent.Data.poste.replace(' ','')
+
             New-ADUser `
             -Name $name `
             -GivenName $nom `
@@ -78,6 +80,8 @@ Start-PodeServer {
             -ChangePasswordAtLogon $True `
             -Enabled $True `
             -Description $description
+
+            Add-ADGroupMember -Identity $poste -Members $surnomLower
         }
         catch{
             Write-Host $_
@@ -120,9 +124,8 @@ Start-PodeServer {
 }
 
 
-# Try except and response
+# Response
 # Token on login
-# Add member to a group
 
 #New-ADUser `
 #-Name "Rasendranirina Manankoraisina Daniel" `
