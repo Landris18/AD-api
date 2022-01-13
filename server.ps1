@@ -5,22 +5,73 @@ Start-PodeServer {
     $protocol = "Http"
     $endpointname = "AD-api"
     $domain = "server-ad.map"
+    $secret = "SECRET"
     
     Enable-PodeSessionMiddleware -Duration 120 -Extend
 
     New-PodeAuthScheme -Form | Add-PodeAuthWindowsAd -Name 'Login' -Fqdn $domain -Domain 'SERVER-AD'
 
+    # JWT with signature, signed with secret :
+    New-PodeAuthScheme -Bearer -AsJWT -Secret $secret | Add-PodeAuth -Name 'Authenticate' -Sessionless -ScriptBlock {
+        param($payload)
+    }
+    
+
     Add-PodeEndpoint -Address $address -Port $port -Protocol $protocol -Name $endpointname
 
 
-    # Récupérer les informations lors d'un login
-    Add-PodeRoute -Method Get -Path '/info' -EndpointName $endpointname -Authentication 'Login' -ScriptBlock {
-        Write-Host $WebEvent.Auth.User.Username
+    Function encodeToken{
+        param($username)
+
+        $header = @{
+            alg = 'hs256'
+            typ = 'JWT'
+        }
+        
+        $payload = @{
+            sub = $username
+            name = $username
+            exp = ([System.DateTimeOffset]::Now.AddDays(1).ToUnixTimeSeconds())
+        }
+
+        return ConvertTo-PodeJwt -Header $header -Payload $payload -Secret $secret
     }
+
+    Function verifToken{
+        param($token)
+
+        try{
+            return ConvertFrom-PodeJwt -Token $token -Secret $secret
+        }
+        catch{
+            return @{sub = 0}
+        }
+    }
+
+
+    # Authentification pour récupérer un token
+    Add-PodeRoute -Method Get -Path '/api/login' -EndpointName $endpointname -Authentication 'Authenticate' -ScriptBlock {
+        $username = $WebEvent.Auth.User.Username
+        if ($username -ne $null) {
+            $token = encodeToken($username)
+            Write-PodeJsonResponse -Value @{ token = $token}
+        }
+        else {
+            Write-PodeJsonResponse -Value @{ status = "Echec de l'authentification"}
+        }
+    }
+
 
     # La route principale du serveur
     Add-PodeRoute -Method Get -Path "/" -EndpointName $endpointname -ScriptBlock {
-        Write-PodeJsonResponse -Value @{ Welcoming = "Hello Visitor !"}
+        $token = $WebEvent.Data.token
+        $username = $WebEvent.Data.username
+
+        if (verifToken($token).sub -ne $username){
+            Write-PodeJsonResponse -Value @{ Erreur = "Erreur token"}
+        }
+
+        Write-PodeJsonResponse -Value @{ Welcoming = "Hello world"}
     }
 
 
@@ -116,6 +167,7 @@ Start-PodeServer {
         }
     }
 
+    
     # Affichage des services qui se tournent sur le serveur
     Add-PodePage -Name 'processes' -ScriptBlock {
         Get-Process
