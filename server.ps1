@@ -95,7 +95,7 @@ Start-PodeServer {
 #-GivenName "Rasendranirina" `
 #-Surname "Daniel" `
 #-SamAccountName "daniel" `
-#-AccountPassword (ConvertTo-SecureString -AsPlainText "win10**18" -Force) `
+#-AccountPassword (ConvertTo-SecureString -AsPlainText "****" -Force) `
 #-UserPrincipalName "daniel@server-ad.map" `
 #-ChangePasswordAtLogon $True `
 #-Enabled $True
