@@ -54,23 +54,55 @@ Start-PodeServer {
     )
 
 
-    # Création d'un utilisateur
+	# Création d'un utilisateur
     Add-PodeRoute -Method Post -Path '/api/create_user' -EndpointName $endpointname -Authentication 'Login' -ScriptBlock {
         try{
+            $nom = (Get-Culture).TextInfo.ToTitleCase($WebEvent.Data.nom.ToLower())
+            $prenoms = $WebEvent.Data.prenoms
+            $name = "$nom $prenoms"
+
+            $surnom = $WebEvent.Data.surnom
+            $surnomLower = $surnom.ToLower()
+            $domain = "server-ad.map"
+            $UserPrincipalName = "$surnomLower@$domain"
+            $description = $WebEvent.Data.commentaire
+
             New-ADUser `
-            -Name "(Get-Culture).TextInfo.ToTitleCase($WebEvent.Data.nom.ToLower()) $WebEvent.Data.prenoms" `
-            -GivenName (Get-Culture).TextInfo.ToTitleCase($WebEvent.Data.nom.ToLower()) `
-            -Surname $WebEvent.Data.surnom `
-            -SamAccountName $WebEvent.Data.surnom.ToLower() `
+            -Name $name `
+            -GivenName $nom `
+            -Surname $surnom `
+            -SamAccountName $surnomLower `
+            -Path "OU=Futurmap DATA,DC=server-ad,DC=map" `
             -AccountPassword (ConvertTo-SecureString -AsPlainText "****" -Force) `
-            -UserPrincipalName "$WebEvent.Data.surnom@$domain" `
+            -UserPrincipalName $UserPrincipalName `
             -ChangePasswordAtLogon $True `
-            -Enabled $True
+            -Enabled $True `
+            -Description $description
         }
         catch{
             Write-Host $_
         }
     } 
+
+
+    # Création d'un groupe
+    Add-PodeRoute -Method Post -Path '/api/create_groupe' -EndpointName $endpointname -Authentication 'Login' -ScriptBlock {
+        try{
+            $name = $WebEvent.Data.nom
+            $description = $WebEvent.Data.commentaire
+
+            New-ADGroup `
+            -Name $name `
+            -SamAccountName $name.replace(' ','') `
+            -Path "OU=Futurmap DATA,DC=server-ad,DC=map" `
+            -GroupCategory Security `
+            -GroupScope Global `
+            -Description $description
+        }
+        catch{
+            Write-Host $_
+        }
+    }
 
 
     # Récupération d'un query (http://localhost:6010/users/?userId=12345)
@@ -89,6 +121,8 @@ Start-PodeServer {
 
 
 # Try except and response
+# Token on login
+# Add member to a group
 
 #New-ADUser `
 #-Name "Rasendranirina Manankoraisina Daniel" `
