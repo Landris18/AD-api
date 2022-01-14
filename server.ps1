@@ -5,16 +5,16 @@ Start-PodeServer {
     $protocol = "Http"
     $endpointname = "AD-api"
     $domain = "server-ad.map"
-    $secret = "SECRET"
+    # $secret = "SECRET"
     
     Enable-PodeSessionMiddleware -Duration 120 -Extend
 
     New-PodeAuthScheme -Form | Add-PodeAuthWindowsAd -Name 'Login' -Fqdn $domain -Domain 'SERVER-AD'
 
     # JWT with signature, signed with secret :
-    New-PodeAuthScheme -Bearer -AsJWT -Secret $secret | Add-PodeAuth -Name 'Authenticate' -Sessionless -ScriptBlock {
-        param($payload)
-    }
+    # New-PodeAuthScheme -Bearer -AsJWT -Secret $secret | Add-PodeAuth -Name 'Authenticate' -Sessionless -ScriptBlock {
+    #     param($payload)
+    # }
     
 
     Add-PodeEndpoint -Address $address -Port $port -Protocol $protocol -Name $endpointname
@@ -50,28 +50,29 @@ Start-PodeServer {
 
 
     # Authentification pour récupérer un token
-    Add-PodeRoute -Method Get -Path '/api/login' -EndpointName $endpointname -Authentication 'Authenticate' -ScriptBlock {
+    Add-PodeRoute -Method Get -Path '/api/login' -EndpointName $endpointname -Authentication 'Login' -ScriptBlock {
         $username = $WebEvent.Auth.User.Username
-        if ($username -ne $null) {
-            $token = encodeToken($username)
-            Write-PodeJsonResponse -Value @{ token = $token}
-        }
-        else {
-            Write-PodeJsonResponse -Value @{ status = "Echec de l'authentification"}
-        }
+        # if ($username -ne $null) {
+        #     $token = encodeToken($username)
+        #     Write-PodeJsonResponse -Value @{ token = $token}
+        # }
+        # else {
+        #     Write-PodeJsonResponse -Value @{ status = "Echec de l'authentification"}
+        # }
+         Write-PodeJsonResponse -Value @{ Success = "$username est connecté"}
     }
 
 
     # La route principale du serveur
     Add-PodeRoute -Method Get -Path "/" -EndpointName $endpointname -ScriptBlock {
-        $token = $WebEvent.Data.token
-        $username = $WebEvent.Data.username
+        # $token = $WebEvent.Data.token
+        # $username = $WebEvent.Data.username
 
-        if (verifToken($token).sub -ne $username){
-            Write-PodeJsonResponse -Value @{ Erreur = "Erreur token"}
-        }
+        # if (verifToken($token).sub -ne $username){
+        #     Write-PodeJsonResponse -Value @{ Erreur = "Erreur token"}
+        # }
 
-        Write-PodeJsonResponse -Value @{ Welcoming = "Hello world"}
+        Write-PodeJsonResponse -Value @{ Welcome = "This is the an AD api server"}
     }
 
 
@@ -87,22 +88,6 @@ Start-PodeServer {
             (New-PodeOAIntProperty -Name 'UserId')
         ))
     } -PassThru | Add-PodeOAResponse -StatusCode 404 -Description 'User not found'
-
-
-    # Récupération depuis un JSON
-    Add-PodeRoute -Method Post -Path '/api/users' -EndpointName $endpointname -ScriptBlock {
-        Write-PodeJsonResponse -Value @{
-            Name = $WebEvent.Data.name
-            UserId = $WebEvent.Data.userId
-        }
-    } -PassThru | Set-PodeOARequest -RequestBody (
-        New-PodeOARequestBody -Required -ContentSchemas @{
-            'application/json' = (New-PodeOAObjectProperty -Properties @(
-                (New-PodeOAStringProperty -Name 'name'),
-                (New-PodeOAIntProperty -Name 'userId')
-            ))
-        }
-    )
 
 
 	# Création d'un utilisateur
