@@ -5,22 +5,10 @@ Start-PodeServer {
     $protocol = "Http"
     $endpointname = "AD-api"
     $domain = "server-ad.map"
-    $secret = "SECRET"
     
-    Enable-PodeSessionMiddleware -Duration 120 -Extend
-
-    New-PodeAuthScheme -Form | Add-PodeAuthWindowsAd -Name 'Login' -Fqdn $domain -Domain 'SERVER-AD'
-
-    # JWT with signature, signed with secret :
-    New-PodeAuthScheme -Bearer -AsJWT -Secret $secret | Add-PodeAuth -Name 'Authenticate' -Sessionless -ScriptBlock {
-        param($payload)
-    }
-    
-
-    Add-PodeEndpoint -Address $address -Port $port -Protocol $protocol -Name $endpointname
-
-
     Function encodeToken{
+        # Encoder des données pour avoir un token jwt
+
         param($username)
 
         $header = @{
@@ -34,14 +22,16 @@ Start-PodeServer {
             exp = ([System.DateTimeOffset]::Now.AddDays(1).ToUnixTimeSeconds())
         }
 
-        return ConvertTo-PodeJwt -Header $header -Payload $payload -Secret $secret
+        return ConvertTo-PodeJwt -Header $header -Payload $payload -Secret "SECRET"
     }
 
-    Function verifToken{
+    Function decodeToken{
+        # Decoder un token pour avoir des données
+
         param($token)
 
         try{
-            return ConvertFrom-PodeJwt -Token $token -Secret $secret
+            return ConvertFrom-PodeJwt -Token $token -Secret "SECRET"
         }
         catch{
             return @{sub = 0}
@@ -49,64 +39,60 @@ Start-PodeServer {
     }
 
 
-    # Authentification pour récupérer un token
-    Add-PodeRoute -Method Get -Path '/api/login' -EndpointName $endpointname -Authentication 'Authenticate' -ScriptBlock {
-        $username = $WebEvent.Auth.User.Username
-        if ($username -ne $null) {
-            $token = encodeToken($username)
-            Write-PodeJsonResponse -Value @{ token = $token}
+    # Session expiration in hours
+    Enable-PodeSessionMiddleware -Duration 0
+
+    # Creating an endpoint for routes
+    Add-PodeEndpoint -Address $address -Port $port -Protocol $protocol -Name $endpointname
+
+    # Active directory authentication
+    New-PodeAuthScheme -Form | Add-PodeAuthWindowsAd -Name 'Login' -Fqdn $domain -Domain 'SERVER-AD'
+
+    # Bearer authorization with a jwt token
+    New-PodeAuthScheme -Bearer -AsJWT -Secret "SECRET" | Add-PodeAuth -Name 'Authenticate' -Sessionless -ScriptBlock {
+        param($payload)
+
+        if ($payload) {
+            return @{
+                User = @{
+                    user = $payload
+                }
+            }
         }
-        else {
-            Write-PodeJsonResponse -Value @{ status = "Echec de l'authentification"}
+
+        return $null
+    }
+
+
+    # Authentification par un compte AD pour récupérer un token
+    Add-PodeRoute -Method Get -Path '/api/login' -EndpointName $endpointname -Authentication 'Login' -ScriptBlock {
+        $username = $WebEvent.Auth.User.Username
+
+        try {
+            $token = encodeToken($username)
+    
+            Write-PodeJsonResponse -Value @{
+                message = "$username connected" 
+                AccessToken = $token
+            }
+        }
+        catch{
+            Write-Host $_
+            Write-PodeJsonResponse -Value @{
+                message = "Authentication Failed" 
+            }
         }
     }
 
 
     # La route principale du serveur
-    Add-PodeRoute -Method Get -Path "/" -EndpointName $endpointname -ScriptBlock {
-        $token = $WebEvent.Data.token
-        $username = $WebEvent.Data.username
-
-        if (verifToken($token).sub -ne $username){
-            Write-PodeJsonResponse -Value @{ Erreur = "Erreur token"}
-        }
-
-        Write-PodeJsonResponse -Value @{ Welcoming = "Hello world"}
+    Add-PodeRoute -Method Get -Path "/" -EndpointName $endpointname -Authentication 'Authenticate' -ScriptBlock {
+        Write-PodeJsonResponse -Value @{ Welcome = "This is an AD-Server"}
     }
 
 
-    # Récupération d'un paramètre
-    Add-PodeRoute -Method Get -Path '/api/users/:userId' -EndpointName $endpointname -ScriptBlock {
-        Write-PodeJsonResponse -Value @{
-            Name = 'Landry'
-            UserId = $WebEvent.Parameters['userId']
-        }
-    } -PassThru | Add-PodeOAResponse -StatusCode 200 -Description 'Received a user object' -ContentSchemas @{
-        'application/json' = (New-PodeOAObjectProperty -Properties @(
-            (New-PodeOAStringProperty -Name 'Name'),
-            (New-PodeOAIntProperty -Name 'UserId')
-        ))
-    } -PassThru | Add-PodeOAResponse -StatusCode 404 -Description 'User not found'
-
-
-    # Récupération depuis un JSON
-    Add-PodeRoute -Method Post -Path '/api/users' -EndpointName $endpointname -ScriptBlock {
-        Write-PodeJsonResponse -Value @{
-            Name = $WebEvent.Data.name
-            UserId = $WebEvent.Data.userId
-        }
-    } -PassThru | Set-PodeOARequest -RequestBody (
-        New-PodeOARequestBody -Required -ContentSchemas @{
-            'application/json' = (New-PodeOAObjectProperty -Properties @(
-                (New-PodeOAStringProperty -Name 'name'),
-                (New-PodeOAIntProperty -Name 'userId')
-            ))
-        }
-    )
-
-
 	# Création d'un utilisateur
-    Add-PodeRoute -Method Post -Path '/api/create_user' -EndpointName $endpointname -Authentication 'Login' -ScriptBlock {
+    Add-PodeRoute -Method Post -Path '/api/create_user' -EndpointName $endpointname -Authentication 'Authenticate' -ScriptBlock {
         try{
             $nom = (Get-Culture).TextInfo.ToTitleCase($WebEvent.Data.nom.ToLower())
             $prenoms = $WebEvent.Data.prenoms
@@ -141,7 +127,7 @@ Start-PodeServer {
 
 
     # Création d'un groupe
-    Add-PodeRoute -Method Post -Path '/api/create_groupe' -EndpointName $endpointname -Authentication 'Login' -ScriptBlock {
+    Add-PodeRoute -Method Post -Path '/api/create_groupe' -EndpointName $endpointname -Authentication 'Authenticate' -ScriptBlock {
         try{
             $name = $WebEvent.Data.nom
             $description = $WebEvent.Data.commentaire
@@ -159,32 +145,8 @@ Start-PodeServer {
         }
     }
 
-
-    # Récupération d'un query (http://localhost:6010/users/?userId=12345)
-    Add-PodeRoute -Method Get -Path '/users/' -EndpointName $endpointname -ScriptBlock {
-        Write-PodeJsonResponse -Value @{
-            Id = $WebEvent.Query['userId']
-        }
-    }
-
-    
-    # Affichage des services qui se tournent sur le serveur
-    Add-PodePage -Name 'processes' -ScriptBlock {
-        Get-Process
-    }
-
 }
 
-
 # Response
-# Token on login
-
-#New-ADUser `
-#-Name "Rasendranirina Manankoraisina Daniel" `
-#-GivenName "Rasendranirina" `
-#-Surname "Daniel" `
-#-SamAccountName "daniel" `
-#-AccountPassword (ConvertTo-SecureString -AsPlainText "****" -Force) `
-#-UserPrincipalName "daniel@server-ad.map" `
-#-ChangePasswordAtLogon $True `
-#-Enabled $True
+# Comprendre les variables globales
+# Mettre le secret dans une variable d'environnement
