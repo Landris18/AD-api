@@ -1,9 +1,10 @@
 # AD-api 
-Avant de lancer le serveur, n'oubliez pas de changer le domaine et l'unité d'organisation à utiliser.
 
 Un api reliant un ERP et un active directory. Ainsi AD-api signifie un api pour active directory.
 
 # Lancement 
+
+Avant de lancer le serveur, n'oubliez pas de changer le domaine et l'unité d'organisation à utiliser.
 
 Pour lancer le serveur, il suffit de taper `pode start`
 
