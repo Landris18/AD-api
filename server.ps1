@@ -115,15 +115,16 @@ Start-PodeServer {
             # En cas d'erreur
             Write-Host $_
             Write-PodeJsonResponse -Value @{
-                response = "Echec de l'authentification" 
+                message = "Echec de l'authentification" 
             }
+            Set-PodeResponseStatus -Code 401 -ContentType 'application/json' -NoErrorPage
         }
     }
 
 
     Add-PodeRoute -Method Post -Path '/api/create_user' -EndpointName $endpointname -Authentication 'Authenticate' -ScriptBlock {
         """
-            DESC : Création d'un utilisateur dans l'annuaire active directory, ajout de celui-ci dans un groupe
+            DESC : Création d'un utilisateur dans l'annuaire active directory et ajout de celui-ci dans un groupe
         """
 
         try{
@@ -153,13 +154,19 @@ Start-PodeServer {
             -Description $description
 
             Add-ADGroupMember -Identity $poste -Members $surnomLower
+
+            Write-PodeJsonResponse -Value @{
+                message = "Utilisateur créé avec succès" 
+            }
+            Set-PodeResponseStatus -Code 201 -ContentType 'application/json'
         }
         catch{
             # En cas d'erreur
             Write-Host $_
             Write-PodeJsonResponse -Value @{
-                response = "Echec de création de l'utilisateur" 
+                message = "Echec de la création de l'utilisateur" 
             }
+            Set-PodeResponseStatus -Code 400 -ContentType 'application/json' -NoErrorPage
         }
     } 
 
@@ -183,19 +190,25 @@ Start-PodeServer {
             -GroupCategory Security `
             -GroupScope Global `
             -Description $description
+
+            Write-PodeJsonResponse -Value @{
+                message = "Groupe créé avec succès" 
+            }
+            Set-PodeResponseStatus -Code 201 -ContentType 'application/json'
         }
         catch{
             # En cas d'erreur
             Write-Host $_
             Write-PodeJsonResponse -Value @{
-                response = "Echec de création du groupe" 
+                response = "Echec de la création du groupe" 
             }
+            Set-PodeResponseStatus -Code 400 -ContentType 'application/json' -NoErrorPage
         }
     }
 
 }
 
-# Response
+# Folder structure and structure
 # $env:VARIABLE="variable" (Creating and editing)
 # Remove-Item env:variable (Removing)
 # dir env: (Listing)
