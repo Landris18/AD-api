@@ -5,7 +5,7 @@ Un api reliant un ERP et un active directory. Ainsi AD-api signifie un api pour 
 # Lancement 
 
 Avant de lancer le serveur, n'oubliez pas de changer le domaine et l'unité d'organisation à utiliser.
-Puis il faut créer une variable d'environnement "SECRET" par la commande `$env:SECRET="La clè secrète"
+Puis il faut créer une variable d'environnement "SECRET" par la commande `$env:SECRET="La clè secrète"`
 
 Pour lancer le serveur, il suffit de taper `pode start`
 
