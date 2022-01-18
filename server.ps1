@@ -16,10 +16,8 @@ Start-PodeServer {
     # Cette variable doit être créer avant le lancement du serveur avec la commande $env:SECRET="La clé secrète"
     $secret = $env:SECRET
 
+    #Fonction permettant d'encoder les données pour avoir un token JWT
     Function encodeToken{
-        """
-            DESC : Fonction permettant d'encoder les données pour avoir un token JWT
-        """
 
         param($username)
 
@@ -34,19 +32,17 @@ Start-PodeServer {
             exp = ([System.DateTimeOffset]::Now.AddDays(1).ToUnixTimeSeconds())
         }
 
-        return ConvertTo-PodeJwt -Header $header -Payload $payload -Secret $using:secret
+        return ConvertTo-PodeJwt -Header $header -Payload $payload -Secret $env:SECRET
     }
 
+
+    # Fonction permettant de décoder un token JWT pour avoir les données
     Function decodeToken{
-        """
-            DESC : Fonction permettant de décoder un token JWT pour avoir les données
-        """
-        # Decoder un token pour avoir des données
 
         param($token)
 
         try{
-            return ConvertFrom-PodeJwt -Token $token -Secret $using:secret
+            return ConvertFrom-PodeJwt -Token $token -Secret $env:SECRET
         }
         catch{
             return @{sub = 0}
@@ -68,9 +64,6 @@ Start-PodeServer {
 
     # Authentification Bearer utilisant un token JWT
     New-PodeAuthScheme -Bearer -AsJWT -Secret $secret | Add-PodeAuth -Name 'Authenticate' -Sessionless -ScriptBlock {
-        """
-            DESC : Authentification Bearer utilisant un token JWT
-        """
 
         param($payload)
 
@@ -86,18 +79,15 @@ Start-PodeServer {
     }
 
 
+    # La route principale du serveur
     Add-PodeRoute -Method Get -Path "/api" -EndpointName $endpointname -Authentication 'Authenticate' -ScriptBlock {
-        """
-            DESC : La route principale du serveur
-        """
+
         Write-PodeJsonResponse -Value @{ Bienvenu = "Vous êtes sur un serveur active directory"}
     }
-    
 
-    Add-PodeRoute -Method Get -Path '/api/login' -EndpointName $endpointname -Authentication 'Login' -ScriptBlock {
-        """
-            DESC : Authentification sur l'active directory pour récupérer un token JWT
-        """
+    
+    # Authentification sur l'active directory pour récupérer un token JWT
+    Add-PodeRoute -Method Post -Path '/api/login' -EndpointName $endpointname -Authentication 'Login' -ScriptBlock {
 
         # Récupération du nom d'utilisateur lors de la connexion
         $username = $WebEvent.Auth.User.Username
@@ -122,10 +112,8 @@ Start-PodeServer {
     }
 
 
+    # Création d'un utilisateur dans l'annuaire active directory et ajout de celui-ci dans un groupe
     Add-PodeRoute -Method Post -Path '/api/create_user' -EndpointName $endpointname -Authentication 'Authenticate' -ScriptBlock {
-        """
-            DESC : Création d'un utilisateur dans l'annuaire active directory et ajout de celui-ci dans un groupe
-        """
 
         try{
             # Récupération des informations sur l'utilisateur à créer
@@ -171,11 +159,8 @@ Start-PodeServer {
     } 
 
 
-    # Création d'un groupe
+    # Création d'un groupe dans l'annuaire active directory
     Add-PodeRoute -Method Post -Path '/api/create_groupe' -EndpointName $endpointname -Authentication 'Authenticate' -ScriptBlock {
-        """
-            DESC : Création d'un gropupe dans l'annuaire active directory
-        """
 
         try{
             # Récupération des informations sur le groupe à créer

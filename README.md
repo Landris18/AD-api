@@ -1,6 +1,6 @@
 # AD-api 
 
-Un api reliant un ERP et un active directory. Ainsi AD-api signifie un api pour active directory.
+Un api reliant un ERP et un active directory sur un Windows server 2012 R2. Ainsi AD-api signifie un api pour active directory.
 
 # Lancement 
 
