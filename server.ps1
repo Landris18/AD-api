@@ -191,9 +191,81 @@ Start-PodeServer {
         }
     }
 
+
+    # La route principale du serveur
+    Add-PodeRoute -Method Get -Path "/api/folder" -EndpointName $endpointname -ScriptBlock {
+
+        try {
+            $thePath = "C:\Users\Administrateur\Documents\SHARED"
+            #$thePath = "C:\Users\Landry LD\Music"
+
+            #$dossiers = Get-ChildItem $thePath -Recurse 
+
+            $groupList = Get-ADGroup -Filter * -SearchBase "OU=Futurmap DATA,DC=server-ad,DC=map" | Select-Object SamAccountName
+            #$groupList = ("LANDRIS18\Landry LD","BUILTIN\Administrateurs" )
+
+
+            $root = @()
+
+            foreach($group in $groupList){
+
+                $account = $group.SamAccountName
+
+                $access_eff = Get-ChildItem -Path $thePath | Get-NTFSEffectiveAccess -Account "SERVER-AD\$account" | Select-Object Account,Fullname,AccessRights
+                #$access_eff = Get-ChildItem -Path $thePath | Get-NTFSEffectiveAccess -Account $group | Select-Object Account,Fullname,AccessRights 
+
+                foreach ($doss in $access_eff){
+                    if ($root.Count -gt 0){
+                        $pare = $true
+                        foreach($r in $root){
+                            if ($r.dossier -eq $doss.Fullname){
+                                $r.Access = $r.Access + @{
+                                    Account=$doss.Account.ToString();
+                                    Perm=$doss.AccessRights;
+                                }
+                                $pare = $false
+                                break
+                            }
+                        }
+                        if ($pare -eq $true){
+                            $root = $root + 
+                            @{
+                                dossier=$doss.Fullname;
+                                Access=@(
+                                    @{
+                                        account=$doss.Account.ToString();
+                                        permission=$doss.AccessRights;
+                                    }
+                                )
+                            }
+                        }
+
+                    }
+                    else{
+                        $root = $root + @{
+                                Dossier=$doss.Fullname;
+                                Access=@(
+                                    @{
+                                        account=$doss.Account.ToString();
+                                        permission=$doss.AccessRights;
+                                    }
+                                )
+                            }
+                    }
+                }
+
+            }
+
+            Write-PodeJsonResponse -Value $root
+        }
+        catch{
+            write-host $_
+        }
+
+    }
+
 }
 
-# Folder structure and structure
 # $env:VARIABLE="variable" (Creating and editing)
 # Remove-Item env:variable (Removing)
 # dir env: (Listing)
