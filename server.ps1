@@ -16,6 +16,7 @@ Start-PodeServer {
     # Cette variable doit être créer avant le lancement du serveur avec la commande $env:SECRET="La clé secrète"
     $secret = $env:SECRET
 
+
     #Fonction permettant d'encoder les données pour avoir un token JWT
     Function encodeToken{
 
@@ -192,8 +193,8 @@ Start-PodeServer {
     }
 
 
-    # La route principale du serveur
-    Add-PodeRoute -Method Get -Path "/api/folder" -EndpointName $endpointname -ScriptBlock {
+    # Récupération des dossiers et des accès
+    Add-PodeRoute -Method Get -Path "/api/folders" -EndpointName $endpointname -Authentication 'Authenticate' -ScriptBlock {
 
         try {
             $thePath = "C:\Users\Administrateur\Documents\SHARED"
@@ -201,9 +202,8 @@ Start-PodeServer {
 
             #$dossiers = Get-ChildItem $thePath -Recurse 
 
-            $groupList = Get-ADGroup -Filter * -SearchBase "OU=Futurmap DATA,DC=server-ad,DC=map" | Select-Object SamAccountName
+            $groupList = Get-ADGroup -Filter * -SearchBase "OU=Futurmap DATA,DC=server-ad,DC=map" | Select-Object Name, SamAccountName
             #$groupList = ("LANDRIS18\Landry LD","BUILTIN\Administrateurs" )
-
 
             $root = @()
 
@@ -215,13 +215,16 @@ Start-PodeServer {
                 #$access_eff = Get-ChildItem -Path $thePath | Get-NTFSEffectiveAccess -Account $group | Select-Object Account,Fullname,AccessRights 
 
                 foreach ($doss in $access_eff){
+                    
+                    icacls $doss.Fullname /inheritance:d
+
                     if ($root.Count -gt 0){
                         $pare = $true
                         foreach($r in $root){
                             if ($r.dossier -eq $doss.Fullname){
                                 $r.Access = $r.Access + @{
-                                    Account=$doss.Account.ToString();
-                                    Perm=$doss.AccessRights;
+                                    account = $group.Name;
+                                    permission = $doss.AccessRights.ToString();
                                 }
                                 $pare = $false
                                 break
@@ -230,24 +233,23 @@ Start-PodeServer {
                         if ($pare -eq $true){
                             $root = $root + 
                             @{
-                                dossier=$doss.Fullname;
-                                Access=@(
+                                Dossier = $doss.Fullname;
+                                Access = @(
                                     @{
-                                        account=$doss.Account.ToString();
-                                        permission=$doss.AccessRights;
+                                        account = $group.Name;
+                                        permission = $doss.AccessRights.ToString();
                                     }
                                 )
                             }
                         }
-
                     }
                     else{
                         $root = $root + @{
-                                Dossier=$doss.Fullname;
-                                Access=@(
+                                Dossier = $doss.Fullname;
+                                Access = @(
                                     @{
-                                        account=$doss.Account.ToString();
-                                        permission=$doss.AccessRights;
+                                        account = $group.Name;
+                                        permission = $doss.AccessRights.ToString();
                                     }
                                 )
                             }
@@ -259,11 +261,15 @@ Start-PodeServer {
             Write-PodeJsonResponse -Value $root
         }
         catch{
-            write-host $_
+            # En cas d'erreur
+            Write-Host $_
+            Write-PodeJsonResponse -Value @{
+                response = "Echec de la récupération des dossiers et des accès" 
+            }
+            Set-PodeResponseStatus -Code 400 -ContentType 'application/json' -NoErrorPage
         }
 
     }
-
 }
 
 # $env:VARIABLE="variable" (Creating and editing)
