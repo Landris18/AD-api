@@ -12,8 +12,11 @@ Start-PodeServer {
     $domainExtension = (Get-PodeConfig).Domain.split(".")[1]
     $authAdDomain = (Get-PodeConfig).Domain.split(".")[0].ToUpper()
 
+    # Création de la variable d'environnement SECRET pour la création de JWT
+    $value = Get-Date -Format o | ForEach-Object { $_ -replace ":", "." }
+    $env:SECRET = $value
+
     # Récupération de la variable d'environnement SECRET 
-    # Cette variable doit être créer avant le lancement du serveur avec la commande $env:SECRET="La clé secrète"
     $secret = $env:SECRET
 
     # Déclaration de la GPO
@@ -21,6 +24,18 @@ Start-PodeServer {
 
     # Récupération des groupes dans l'annuaire dans l'OU Futurmap DATA
     $groupList = Get-ADGroup -Filter * -SearchBase "OU=Futurmap DATA,DC=server-ad,DC=map" | Select-Object Name, SamAccountName
+    
+    # Lister les dossiers dans la GPO
+    $dossiers = Get-ChildItem $thePath
+
+    Do {
+        foreach($doss in $dossiers){
+            # Convertir les droits hérités en droits explicites sur les dossiers
+            icacls $doss.Name /inheritance:d
+        }
+        Start-Sleep -s 60
+    }
+    While ($True)
     
 
     #Fonction permettant d'encoder les données pour avoir un token JWT
@@ -66,7 +81,7 @@ Start-PodeServer {
 
 
     # Authentification sur l'active directory
-    New-PodeAuthScheme -Form | Add-PodeAuthWindowsAd -Name 'Login' -Fqdn $domain -Domain $authAdDomain
+    New-PodeAuthScheme -Form | Add-PodeAuthWindowsAd -Name 'Login' -Users @('Administrateurs', 'rija') -Fqdn $domain -Domain $authAdDomain
 
 
     # Authentification Bearer utilisant un token JWT
@@ -183,6 +198,11 @@ Start-PodeServer {
             -GroupScope Global `
             -Description $description
 
+            $account = $name.replace(' ','')
+
+            # Ajouter les droits minimum pour voir et lire le GPO
+            Add-NTFSAccess -Path $using:thePath -Account "SERVER-AD\$account" -AccessRights Synchronize Read -AppliesTo ThisFolderOnly
+
             Write-PodeJsonResponse -Value @{
                 message = "Groupe créé avec succès" 
             }
@@ -213,7 +233,6 @@ Start-PodeServer {
             $oldGroupUser = (Get-ADuser -Identity $surnomLower -Properties memberof).memberof | Get-ADGroup | Select-Object name | Sort-Object name
             $oldGroupUser = $oldGroupUser.Name.replace(' ','')
             
-
             # Supprimer l'utilisateur de son ancien groupe
             Remove-ADGroupMember -Identity $oldGroupUser -Members $surnomLower -confirm:$false
 
@@ -253,8 +272,6 @@ Start-PodeServer {
 
                 foreach ($doss in $access_eff){
                     
-                    icacls $doss.Fullname /inheritance:d
-
                     if ($root.Count -gt 0){
                         $pare = $true
                         foreach($r in $root){
