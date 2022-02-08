@@ -16,6 +16,12 @@ Start-PodeServer {
     # Cette variable doit être créer avant le lancement du serveur avec la commande $env:SECRET="La clé secrète"
     $secret = $env:SECRET
 
+    # Déclaration de la GPO
+    $thePath = "C:\Users\Administrateur\Documents\SHARED"
+
+    # Récupération des groupes dans l'annuaire dans l'OU Futurmap DATA
+    $groupList = Get-ADGroup -Filter * -SearchBase "OU=Futurmap DATA,DC=server-ad,DC=map" | Select-Object Name, SamAccountName
+    
 
     #Fonction permettant d'encoder les données pour avoir un token JWT
     Function encodeToken{
@@ -97,8 +103,8 @@ Start-PodeServer {
             $token = encodeToken($username)
     
             Write-PodeJsonResponse -Value @{
-                response = "$username est connecté" 
-                access_token = $token
+                message = "$username est connecté" 
+                token = $token
             }
         }
         catch{
@@ -161,7 +167,7 @@ Start-PodeServer {
 
 
     # Création d'un groupe dans l'annuaire active directory
-    Add-PodeRoute -Method Post -Path '/api/create_groupe' -EndpointName $endpointname -Authentication 'Authenticate' -ScriptBlock {
+    Add-PodeRoute -Method Post -Path '/api/create_group' -EndpointName $endpointname -Authentication 'Authenticate' -ScriptBlock {
 
         try{
             # Récupération des informations sur le groupe à créer
@@ -194,19 +200,22 @@ Start-PodeServer {
 
 
     # Changement de groupe d'un utilisateur dans l'annuaire active directory
-    Add-PodeRoute -Method Put -Path '/api/change_groupe' -EndpointName $endpointname -Authentication 'Authenticate' -ScriptBlock {
+    Add-PodeRoute -Method Put -Path '/api/change_user_group' -EndpointName $endpointname -Authentication 'Authenticate' -ScriptBlock {
 
         try{
             # Récupération des informations pour changer le groupe de l'utilisateur
             $surnom = $WebEvent.Data.surnom
             $surnomLower = $surnom.ToLower()
+
             $poste = $WebEvent.Data.poste
+            $poste = $poste.replace(' ', '')
 
             $oldGroupUser = (Get-ADuser -Identity $surnomLower -Properties memberof).memberof | Get-ADGroup | Select-Object name | Sort-Object name
             $oldGroupUser = $oldGroupUser.Name.replace(' ','')
+            
 
             # Supprimer l'utilisateur de son ancien groupe
-            Remove-ADGroupMember -Identity $oldGroupUser -Members $surnomLower
+            Remove-ADGroupMember -Identity $oldGroupUser -Members $surnomLower -confirm:$false
 
             # Ajouter l'utilisateur dans son nouveau groupe
             Add-ADGroupMember -Identity $poste -Members $surnomLower
@@ -231,21 +240,16 @@ Start-PodeServer {
     Add-PodeRoute -Method Get -Path "/api/folders" -EndpointName $endpointname -Authentication 'Authenticate' -ScriptBlock {
 
         try {
-            # Déclaration de la GPO
-            $thePath = "C:\Users\Administrateur\Documents\SHARED"
-
-            # Récupération des groupes dans l'annuaire dans l'OU Futurmap DATA
-            $groupList = Get-ADGroup -Filter * -SearchBase "OU=Futurmap DATA,DC=server-ad,DC=map" | Select-Object Name, SamAccountName
 
             # Initialisation des dossiers et accès
             $root = @()
 
-            foreach($group in $groupList){
+            foreach($group in $using:groupList){
 
                 $account = $group.SamAccountName
 
                 # Récupération des accès sur les dossiers
-                $access_eff = Get-ChildItem -Path $thePath | Get-NTFSEffectiveAccess -Account "SERVER-AD\$account" | Select-Object Account,Fullname,AccessRights
+                $access_eff = Get-ChildItem -Path $using:thePath | Get-NTFSEffectiveAccess -Account "SERVER-AD\$account" | Select-Object Account,Fullname,AccessRights
 
                 foreach ($doss in $access_eff){
                     
@@ -307,8 +311,3 @@ Start-PodeServer {
 # $env:VARIABLE="variable" (Creating and editing)
 # Remove-Item env:variable (Removing)
 # dir env: (Listing)
-
-#$thePath = "C:\Users\Landry LD\Music"
-#$dossiers = Get-ChildItem $thePath -Recurse 
-#$groupList = ("LANDRIS18\Landry LD","BUILTIN\Administrateurs" )
-#$access_eff = Get-ChildItem -Path $thePath | Get-NTFSEffectiveAccess -Account $group | Select-Object Account,Fullname,AccessRights 
