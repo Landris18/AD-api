@@ -1,13 +1,13 @@
-# AD-api 
+# AD-API 
 
-Un api reliant un ERP et un active directory sur un Windows server 2012 R2. Ainsi AD-api signifie un api pour active directory.
+AD-api est un api permettant la gestion des utilisateurs, des groupes et des accès sur les dossiers d'une annuaire active directory sur un Windows server 2012 R2 via  un ERP.
 
-# Lancement 
+### INSTRUCTIONS ET LANCEMENT
 
-Avant de lancer le serveur, n'oubliez pas de changer le domaine et l'unité d'organisation à utiliser.
-Puis il faut créer une variable d'environnement "SECRET" par la commande `$env:SECRET="La clè secrète"`
+Avant de lancer le serveur, n'oubliez pas de modifier les valeurs contenu dans le fichier de configuration `server.psd1`.
+Il faut aussi installer le module `NTFSSecurity`.
 
-Pour lancer le serveur, il suffit de taper `pode start`
+Pour lancer le serveur, il suffit de taper `pode start` dans le dossier AD-api.
 
 [![forthebadge](https://forthebadge.com/images/badges/built-by-developers.svg)](https://forthebadge.com)
 
