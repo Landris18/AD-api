@@ -26,19 +26,21 @@ Start-PodeServer {
     $groupList = Get-ADGroup -Filter * -SearchBase "OU=Futurmap DATA,DC=server-ad,DC=map" | Select-Object Name, SamAccountName
     
     # Lister les dossiers dans la GPO
-    $dossiers = Get-ChildItem $thePath
+    $dossiers = Get-ChildItem $thePath | Select-Object FullName
 
-    Do {
+
+    # Fonction permettant de convertir les droits hérités en droit explicites
+    Function convertRight {
+        param($none)
         foreach($doss in $dossiers){
             # Convertir les droits hérités en droits explicites sur les dossiers
-            icacls $doss.Name /inheritance:d
+            icacls $doss.FullName /inheritance:d
         }
-        Start-Sleep -s 60
     }
-    While ($True)
+    convertRight("none")
     
 
-    #Fonction permettant d'encoder les données pour avoir un token JWT
+    # Fonction permettant d'encoder les données pour avoir un token JWT
     Function encodeToken{
 
         param($username)
@@ -72,7 +74,7 @@ Start-PodeServer {
     }
 
 
-    # Activation d'une session
+    # Activation session
     Enable-PodeSessionMiddleware
 
 
@@ -81,7 +83,7 @@ Start-PodeServer {
 
 
     # Authentification sur l'active directory
-    New-PodeAuthScheme -Form | Add-PodeAuthWindowsAd -Name 'Login' -Users @('Administrateurs', 'rija') -Fqdn $domain -Domain $authAdDomain
+    New-PodeAuthScheme -Form | Add-PodeAuthWindowsAd -Name 'Login' -Users @('Administrateur') -Fqdn $domain -Domain $authAdDomain
 
 
     # Authentification Bearer utilisant un token JWT
@@ -135,7 +137,7 @@ Start-PodeServer {
 
     # Création d'un utilisateur dans l'annuaire active directory et ajout de celui-ci dans un groupe
     Add-PodeRoute -Method Post -Path '/api/create_user' -EndpointName $endpointname -Authentication 'Authenticate' -ScriptBlock {
-
+        
         try{
             # Récupération des informations sur l'utilisateur à créer
             $nom = (Get-Culture).TextInfo.ToTitleCase($WebEvent.Data.nom.ToLower())
@@ -156,9 +158,9 @@ Start-PodeServer {
             -Surname $surnom `
             -SamAccountName $surnomLower `
             -Path "OU=$using:ou,DC=$using:domainName,DC=$using:domainExtension" `
-            -AccountPassword (ConvertTo-SecureString -AsPlainText "****" -Force) `
+            -AccountPassword (ConvertTo-SecureString -AsPlainText "win10**10" -Force) `
             -UserPrincipalName $UserPrincipalName `
-            -ChangePasswordAtLogon $True `
+            -ChangePasswordAtLogon $False `
             -Enabled $True `
             -Description $description
 
@@ -324,7 +326,3 @@ Start-PodeServer {
 
     }
 }
-
-# $env:VARIABLE="variable" (Creating and editing)
-# Remove-Item env:variable (Removing)
-# dir env: (Listing)
