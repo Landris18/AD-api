@@ -41,3 +41,5 @@
 # $env:VARIABLE="variable" (Creating and editing)
 # Remove-Item env:variable (Removing)
 # dir env: (Listing)
+
+# $s = New-PSSession -ComputerName "WIN-IP4ACBPGSOO"
