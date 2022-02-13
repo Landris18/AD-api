@@ -120,7 +120,6 @@ Start-PodeServer {
             $token = encodeToken($username)
     
             Write-PodeJsonResponse -Value @{
-                message = "$username est connecté" 
                 token = $token
             }
         }
@@ -203,7 +202,7 @@ Start-PodeServer {
             $account = $name.replace(' ','')
 
             # Ajouter les droits minimum pour voir et lire le GPO
-            Add-NTFSAccess -Path $using:thePath -Account "SERVER-AD\$account" -AccessRights Synchronize Read -AppliesTo ThisFolderOnly
+            # Add-NTFSAccess -Path $using:thePath -Account "SERVER-AD\$account" -AccessRights Synchronize Read -AppliesTo ThisFolderOnly
 
             Write-PodeJsonResponse -Value @{
                 message = "Groupe créé avec succès" 
