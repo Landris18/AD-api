@@ -1,3 +1,6 @@
+$s = New-PSSession -ComputerName WIN-IP4ACBPGSOO
+Enter-PSSession $s
+
 Start-PodeServer {
 
     # Récupération des variables de configuration depuis le fichier server.psd1
@@ -71,6 +74,29 @@ Start-PodeServer {
         catch{
             return @{sub = 0}
         }
+    }
+
+
+    Function get_all_drives {
+        $Reports = Get-GPO -All | Get-GPOReport -ReportType Xml
+        $DriveMappings = @()
+        ForEach ($Report In $Reports) {
+            $GPO = ([xml]$Report).GPO
+            ForEach ($ExtensionData In $GPO.User.ExtensionData) {
+                If ($ExtensionData.Name -eq "Drive Maps") {
+                    $Mappings = $ExtensionData.Extension.DriveMapSettings.Drive
+                    ForEach ($Mapping In $Mappings) {
+                        $DriveMapping = New-Object PSObject -Property @{
+                            letter = $Mapping.Properties.Letter;
+                            label = $Mapping.Properties.label;
+                            path = $Mapping.Properties.Path;
+                        }
+                        $DriveMappings += $DriveMapping
+                    }
+                }
+            }
+        }
+        return $DriveMappings
     }
 
 
@@ -199,7 +225,7 @@ Start-PodeServer {
             -GroupScope Global `
             -Description $description
 
-            $account = $name.replace(' ','')
+            # $account = $name.replace(' ','')
 
             # Ajouter les droits minimum pour voir et lire le GPO
             # Add-NTFSAccess -Path $using:thePath -Account "SERVER-AD\$account" -AccessRights Synchronize Read -AppliesTo ThisFolderOnly
@@ -313,6 +339,7 @@ Start-PodeServer {
             }
 
             Write-PodeJsonResponse -Value $root
+            Set-PodeResponseStatus -Code 200 -ContentType 'application/json'
         }
         catch{
             # En cas d'erreur
@@ -324,4 +351,58 @@ Start-PodeServer {
         }
 
     }
+
+
+    # Récupération des lecteurs
+    Add-PodeRoute -Method Get -Path "/api/get_all_drives" -EndpointName $endpointname -ScriptBlock {
+        try {
+            $drives = get_all_drives
+            Write-PodeJsonResponse -Value $drives
+            Set-PodeResponseStatus -Code 200 -ContentType 'application/json'
+        }
+        catch {
+            # En cas d'erreur
+            Write-Host $_
+            Write-PodeJsonResponse -Value @{
+                response = "Echec de récupération des lecteurs" 
+            }
+            Set-PodeResponseStatus -Code 400 -ContentType 'application/json' -NoErrorPage
+        }
+    }   
+
+
+    # Récupération des dossiers dans un lecteur (niveau 1)
+    Add-PodeRoute -Method Get -Path "/api/get_all_drive_folders/" -EndpointName $endpointname -ScriptBlock {
+        try {
+            $folders = @()
+
+            if ($WebEvent.Query['drive']) {
+                $drives = get_all_drives
+                if ($drives.Where({$_.label -eq $WebEvent.Query['drive'] })) {
+                    $drive = $drives.Where({$_.label -eq $WebEvent.Query['drive']})
+                    $dossiers = Get-ChildItem -Path $drive.path
+                    foreach ($doss in $dossiers) {
+                        $folders = $folders + @{
+                            dossier = $doss.toString().split('\')[-1]
+                            path = $doss.toString()
+                        }
+                    }
+                }
+            }
+
+            Write-PodeJsonResponse -Value $folders
+            Set-PodeResponseStatus -Code 200 -ContentType 'application/json'
+        }
+        catch {
+            # En cas d'erreur
+            Write-Host $_
+            Write-PodeJsonResponse -Value @{
+                response = "Echec de récupération des dossiers du lecteur " 
+            }
+            Set-PodeResponseStatus -Code 400 -ContentType 'application/json' -NoErrorPage
+        }
+    }  
+
+
+
 }
