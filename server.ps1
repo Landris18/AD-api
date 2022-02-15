@@ -21,26 +21,6 @@ Start-PodeServer {
 
     # Récupération de la variable d'environnement SECRET 
     $secret = $env:SECRET
-
-    # Déclaration de la GPO
-    $thePath = "C:\Users\Administrateur\Documents\SHARED"
-
-    # Récupération des groupes dans l'annuaire dans l'OU Futurmap DATA
-    $groupList = Get-ADGroup -Filter * -SearchBase "OU=Futurmap DATA,DC=server-ad,DC=map" | Select-Object Name, SamAccountName
-    
-    # Lister les dossiers dans la GPO
-    $dossiers = Get-ChildItem $thePath | Select-Object FullName
-
-
-    # Fonction permettant de convertir les droits hérités en droit explicites
-    Function convertRight {
-        param($none)
-        foreach($doss in $dossiers){
-            # Convertir les droits hérités en droits explicites sur les dossiers
-            icacls $doss.FullName /inheritance:d
-        }
-    }
-    convertRight("none")
     
 
     # Fonction permettant d'encoder les données pour avoir un token JWT
@@ -97,6 +77,84 @@ Start-PodeServer {
             }
         }
         return $DriveMappings
+    }
+
+
+    # Fonction permettant de convertir les droits hérités en droit explicites
+    Function convertRight {
+        $drives = get_all_drives
+        foreach($d in $drives) {
+            Get-ChildItem -Path $drive.path
+            foreach ($doss in $dossiers) {
+                icacls $doss /inheritance:d
+            }
+        }
+    }
+
+
+    Function get_all_folders_access {
+
+        # Récupération des groupes dans l'annuaire dans l'OU Futurmap DATA
+        $groupList = Get-ADGroup -Filter * -SearchBase "OU=Futurmap DATA,DC=server-ad,DC=map" | Select-Object Name, SamAccountName
+        $drives = get_all_drives
+        # convertRight
+        $toor = @()
+
+        foreach($d in $drives) {
+          $root = @()
+          foreach($group in $groupList){
+      
+            $account = $group.SamAccountName
+      
+            # Récupération des accès sur les dossiers
+            $access_eff = Get-ChildItem -Path $d.path | Get-NTFSEffectiveAccess -Account "SERVER-AD\$account" | Select-Object Account,Fullname,AccessRights
+      
+            foreach ($doss in $access_eff){
+                
+                if ($root.Count -gt 0){
+                    $pare = $true
+                    foreach($r in $root){
+                        if ($r.dossier -eq $doss.Fullname){
+                            $r.Access = $r.Access + @{
+                                account = $group.Name;
+                                permission = $doss.AccessRights.ToString();
+                            }
+                            $pare = $false
+                            break
+                        }
+                    }
+                    if ($pare -eq $true){
+                        $root = $root + 
+                        @{
+                            Dossier = $doss.Fullname;
+                            Access = @(
+                                @{
+                                    account = $group.Name;
+                                    permission = $doss.AccessRights.ToString();
+                                }
+                            )
+                        }
+                    }
+                }
+                else{
+                    $root = $root + @{
+                        Dossier = $doss.Fullname;
+                        Access = @(
+                            @{
+                                account = $group.Name;
+                                permission = $doss.AccessRights.ToString();
+                            }
+                        )
+                    }
+                }
+            }
+          }
+          $toor = $toor + @{
+              $d.label = $root
+          }
+         
+        }
+        return $toor
     }
 
 
@@ -282,63 +340,12 @@ Start-PodeServer {
     }
 
 
-    # Récupération des dossiers et des accès
-    Add-PodeRoute -Method Get -Path "/api/folders" -EndpointName $endpointname -Authentication 'Authenticate' -ScriptBlock {
+    # Récupération de tous les dossiers avec leurs accès
+    Add-PodeRoute -Method Get -Path "/api/get_all_folders_access" -EndpointName $endpointname -ScriptBlock {
 
         try {
-
-            # Initialisation des dossiers et accès
-            $root = @()
-
-            foreach($group in $using:groupList){
-
-                $account = $group.SamAccountName
-
-                # Récupération des accès sur les dossiers
-                $access_eff = Get-ChildItem -Path $using:thePath | Get-NTFSEffectiveAccess -Account "SERVER-AD\$account" | Select-Object Account,Fullname,AccessRights
-
-                foreach ($doss in $access_eff){
-                    
-                    if ($root.Count -gt 0){
-                        $pare = $true
-                        foreach($r in $root){
-                            if ($r.dossier -eq $doss.Fullname){
-                                $r.Access = $r.Access + @{
-                                    account = $group.Name;
-                                    permission = $doss.AccessRights.ToString();
-                                }
-                                $pare = $false
-                                break
-                            }
-                        }
-                        if ($pare -eq $true){
-                            $root = $root + 
-                            @{
-                                Dossier = $doss.Fullname;
-                                Access = @(
-                                    @{
-                                        account = $group.Name;
-                                        permission = $doss.AccessRights.ToString();
-                                    }
-                                )
-                            }
-                        }
-                    }
-                    else{
-                        $root = $root + @{
-                            Dossier = $doss.Fullname;
-                            Access = @(
-                                @{
-                                    account = $group.Name;
-                                    permission = $doss.AccessRights.ToString();
-                                }
-                            )
-                        }
-                    }
-                }
-            }
-
-            Write-PodeJsonResponse -Value $root
+            $folders_access = get_all_folders_access
+            Write-PodeJsonResponse -Value $folders_access
             Set-PodeResponseStatus -Code 200 -ContentType 'application/json'
         }
         catch{
