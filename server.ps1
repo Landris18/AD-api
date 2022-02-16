@@ -1,5 +1,7 @@
 $s = New-PSSession -ComputerName WIN-IP4ACBPGSOO
-Enter-PSSession $s
+Invoke-Command -ScriptBlock {Import-Module -Name ActiveDirectory} -Session $s
+Invoke-Command -ScriptBlock {Import-Module -Name NTFSSecurity} -Session $s
+
 
 Start-PodeServer {
 
@@ -82,13 +84,10 @@ Start-PodeServer {
 
     # Fonction permettant de convertir les droits hérités en droit explicites
     Function convertRight {
-        $drives = get_all_drives
-        foreach($d in $drives) {
-            Get-ChildItem -Path $drive.path
-            foreach ($doss in $dossiers) {
-                icacls $doss /inheritance:d
-            }
-        }
+
+        param($path)
+        Disable-NTFSAccessInheritance -Path $path -RemoveInheritedAccessRules
+
     }
 
 
@@ -97,7 +96,7 @@ Start-PodeServer {
         # Récupération des groupes dans l'annuaire dans l'OU Futurmap DATA
         $groupList = Get-ADGroup -Filter * -SearchBase "OU=Futurmap DATA,DC=server-ad,DC=map" | Select-Object Name, SamAccountName
         $drives = get_all_drives
-        # convertRight
+
         $toor = @()
 
         foreach($d in $drives) {
@@ -110,6 +109,8 @@ Start-PodeServer {
             $access_eff = Get-ChildItem -Path $d.path | Get-NTFSEffectiveAccess -Account "SERVER-AD\$account" | Select-Object Account,Fullname,AccessRights
       
             foreach ($doss in $access_eff){
+
+                convertRight($doss.FullName)
                 
                 if ($root.Count -gt 0){
                     $pare = $true
@@ -219,7 +220,7 @@ Start-PodeServer {
 
 
     # Création d'un utilisateur dans l'annuaire active directory et ajout de celui-ci dans un groupe
-    Add-PodeRoute -Method Post -Path '/api/create_user' -EndpointName $endpointname -Authentication 'Authenticate' -ScriptBlock {
+    Add-PodeRoute -Method Post -Path '/api/create_user' -EndpointName $endpointname -ScriptBlock {
         
         try{
             # Récupération des informations sur l'utilisateur à créer
@@ -227,9 +228,12 @@ Start-PodeServer {
             $prenoms = $WebEvent.Data.prenoms
             $name = "$nom $prenoms"
 
+            $matricule = $WebEvent.Data.matricule
+
             $surnom = $WebEvent.Data.surnom
             $surnomLower = $surnom.ToLower()
             $UserPrincipalName = "$surnomLower@$using:domain"
+
             $description = $WebEvent.Data.commentaire
 
             $poste = $WebEvent.Data.poste.replace(' ','')
@@ -239,7 +243,7 @@ Start-PodeServer {
             -Name $name `
             -GivenName $nom `
             -Surname $surnom `
-            -SamAccountName $surnomLower `
+            -SamAccountName "$surnom($matricule)" `
             -Path "OU=$using:ou,DC=$using:domainName,DC=$using:domainExtension" `
             -AccountPassword (ConvertTo-SecureString -AsPlainText "win10**10" -Force) `
             -UserPrincipalName $UserPrincipalName `
@@ -248,7 +252,7 @@ Start-PodeServer {
             -Description $description
 
             # Ajouter l'utilisateur dans son groupe
-            Add-ADGroupMember -Identity $poste -Members $surnomLower
+            Add-ADGroupMember -Identity $poste -Members "$surnom($matricule)"
 
             Write-PodeJsonResponse -Value @{
                 message = "Utilisateur créé avec succès" 
@@ -305,24 +309,24 @@ Start-PodeServer {
 
 
     # Changement de groupe d'un utilisateur dans l'annuaire active directory
-    Add-PodeRoute -Method Put -Path '/api/change_user_group' -EndpointName $endpointname -Authentication 'Authenticate' -ScriptBlock {
+    Add-PodeRoute -Method Put -Path '/api/change_user_group' -EndpointName $endpointname -ScriptBlock {
 
         try{
             # Récupération des informations pour changer le groupe de l'utilisateur
             $surnom = $WebEvent.Data.surnom
-            $surnomLower = $surnom.ToLower()
+            $matricule = $WebEvent.Data.matricule
 
             $poste = $WebEvent.Data.poste
             $poste = $poste.replace(' ', '')
 
-            $oldGroupUser = (Get-ADuser -Identity $surnomLower -Properties memberof).memberof | Get-ADGroup | Select-Object name | Sort-Object name
+            $oldGroupUser = (Get-ADuser -Identity "$surnom($matricule)" -Properties memberof).memberof | Get-ADGroup | Select-Object name | Sort-Object name
             $oldGroupUser = $oldGroupUser.Name.replace(' ','')
             
             # Supprimer l'utilisateur de son ancien groupe
-            Remove-ADGroupMember -Identity $oldGroupUser -Members $surnomLower -confirm:$false
+            Remove-ADGroupMember -Identity $oldGroupUser -Members "$surnom($matricule)" -confirm:$false
 
             # Ajouter l'utilisateur dans son nouveau groupe
-            Add-ADGroupMember -Identity $poste -Members $surnomLower
+            Add-ADGroupMember -Identity $poste -Members "$surnom($matricule)"
 
             Write-PodeJsonResponse -Value @{
                 message = "Changement de groupe effectué avec succès" 
@@ -337,26 +341,6 @@ Start-PodeServer {
             }
             Set-PodeResponseStatus -Code 400 -ContentType 'application/json' -NoErrorPage
         }
-    }
-
-
-    # Récupération de tous les dossiers avec leurs accès
-    Add-PodeRoute -Method Get -Path "/api/get_all_folders_access" -EndpointName $endpointname -ScriptBlock {
-
-        try {
-            $folders_access = get_all_folders_access
-            Write-PodeJsonResponse -Value $folders_access
-            Set-PodeResponseStatus -Code 200 -ContentType 'application/json'
-        }
-        catch{
-            # En cas d'erreur
-            Write-Host $_
-            Write-PodeJsonResponse -Value @{
-                response = "Echec de la récupération des dossiers et des accès" 
-            }
-            Set-PodeResponseStatus -Code 400 -ContentType 'application/json' -NoErrorPage
-        }
-
     }
 
 
@@ -410,6 +394,53 @@ Start-PodeServer {
         }
     }  
 
+
+    # Récupération de tous les dossiers avec leurs accès
+    Add-PodeRoute -Method Get -Path "/api/get_all_folders_access" -EndpointName $endpointname -ScriptBlock {
+
+        try {
+            $folders_access = get_all_folders_access
+            Write-PodeJsonResponse -Value $folders_access
+            Set-PodeResponseStatus -Code 200 -ContentType 'application/json'
+        }
+        catch{
+            # En cas d'erreur
+            Write-Host $_
+            Write-PodeJsonResponse -Value @{
+                response = "Echec de la récupération des dossiers et des accès" 
+            }
+            Set-PodeResponseStatus -Code 400 -ContentType 'application/json' -NoErrorPage
+        }
+
+    }
+
+
+    # Donner un ou plusieurs accès à un groupe
+    Add-PodeRoute -Method Post -Path "/api/grant_access" -EndpointName $endpointname -ScriptBlock {
+
+        try {
+            $poste = $WebEvent.Data.poste
+            $poste = $poste.replace(' ', '')
+
+            $dossierPath = $WebEvent.Data.dossier
+
+            $droits =  $WebEvent.Data.droits
+
+            # Ajouter les droits de poste sur le dossier et sous-dossiers (niveau 1)
+            Add-NTFSAccess -Path $dossierPath -Account "SERVER-AD\$poste" -AccessRights $droits -AppliesTo ThisFolderAndSubfoldersOneLevel
+
+            Set-PodeResponseStatus -Code 200 -ContentType 'application/json'
+        }
+        catch{
+            # En cas d'erreur
+            Write-Host $_
+            Write-PodeJsonResponse -Value @{
+                response = "Echec de changement des permissions" 
+            }
+            Set-PodeResponseStatus -Code 400 -ContentType 'application/json' -NoErrorPage
+        }
+
+    }
 
 
 }
