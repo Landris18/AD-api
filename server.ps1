@@ -1,8 +1,13 @@
-$s = New-PSSession -ComputerName WIN-IP4ACBPGSOO
+# Récupération du nom de la machine 
+$hostname = hostname.exe
+
+# Importation des modules dans la session su serveur
+$s = New-PSSession -ComputerName $hostname
 Invoke-Command -ScriptBlock {Import-Module -Name ActiveDirectory} -Session $s
 Invoke-Command -ScriptBlock {Import-Module -Name NTFSSecurity} -Session $s
 
 
+# Allumer le serveur api
 Start-PodeServer {
 
     # Récupération des variables de configuration depuis le fichier server.psd1
@@ -12,18 +17,12 @@ Start-PodeServer {
     $endpointname = (Get-PodeConfig).EndpointName
     $domain = (Get-PodeConfig).Domain
     $ou = (Get-PodeConfig).OU
+    $secret = (Get-PodeConfig).Secret
 
     $domainName = (Get-PodeConfig).Domain.split(".")[0]
     $domainExtension = (Get-PodeConfig).Domain.split(".")[1]
     $authAdDomain = (Get-PodeConfig).Domain.split(".")[0].ToUpper()
 
-    # Création de la variable d'environnement SECRET pour la création de JWT
-    $value = Get-Date -Format o | ForEach-Object { $_ -replace ":", "." }
-    $env:SECRET = $value
-
-    # Récupération de la variable d'environnement SECRET 
-    $secret = $env:SECRET
-    
 
     # Fonction permettant d'encoder les données pour avoir un token JWT
     Function encodeToken{
@@ -59,6 +58,7 @@ Start-PodeServer {
     }
 
 
+    # Fonction permettant de récupérer tous les lecteurs
     Function get_all_drives {
         $Reports = Get-GPO -All | Get-GPOReport -ReportType Xml
         $DriveMappings = @()
@@ -84,13 +84,12 @@ Start-PodeServer {
 
     # Fonction permettant de convertir les droits hérités en droit explicites
     Function convertRight {
-
         param($path)
         Disable-NTFSAccessInheritance -Path $path -RemoveInheritedAccessRules
-
     }
 
 
+    # Fonction permettant de récupérer tous les dossiers et leurs accès
     Function get_all_folders_access {
 
         # Récupération des groupes dans l'annuaire dans l'OU Futurmap DATA
@@ -271,26 +270,34 @@ Start-PodeServer {
 
 
     # Création d'un groupe dans l'annuaire active directory
-    Add-PodeRoute -Method Post -Path '/api/create_group' -EndpointName $endpointname -Authentication 'Authenticate' -ScriptBlock {
+    Add-PodeRoute -Method Post -Path '/api/create_group' -EndpointName $endpointname -ScriptBlock {
 
         try{
             # Récupération des informations sur le groupe à créer
             $name = $WebEvent.Data.nom
+            $access = $WebEvent.Data.access
             $description = $WebEvent.Data.commentaire
+
+            $account = $name.replace(' ','')
 
             # Création du groupe
             New-ADGroup `
             -Name $name `
-            -SamAccountName $name.replace(' ','') `
+            -SamAccountName $account `
             -Path "OU=$using:ou,DC=$using:domainName,DC=$using:domainExtension" `
             -GroupCategory Security `
             -GroupScope Global `
             -Description $description
+           
+            $drives = get_all_drives
 
-            # $account = $name.replace(' ','')
-
-            # Ajouter les droits minimum pour voir et lire le GPO
-            # Add-NTFSAccess -Path $using:thePath -Account "SERVER-AD\$account" -AccessRights Synchronize Read -AppliesTo ThisFolderOnly
+            # Ajouter les permissions de groupe aux dossiers et permettre au groupe de voir et lire les tous les lecteurs
+            foreach ($ac in $access) {
+                Add-NTFSAccess -Path $ac.dossier -Account "SERVER-AD\$account" -AccessRights $ac.permission -AppliesTo ThisFolderAndSubfolders
+                foreach ($dr in $drives) {
+                    Add-NTFSAccess -Path $dr.path -Account "SERVER-AD\$account" -AccessRights "ReadAndExecute" -AppliesTo ThisFolderOnly
+                }
+            }
 
             Write-PodeJsonResponse -Value @{
                 message = "Groupe créé avec succès" 
@@ -319,6 +326,7 @@ Start-PodeServer {
             $poste = $WebEvent.Data.poste
             $poste = $poste.replace(' ', '')
 
+            # Récupération de l'ancien groupe de l'utilisateur
             $oldGroupUser = (Get-ADuser -Identity "$surnom($matricule)" -Properties memberof).memberof | Get-ADGroup | Select-Object name | Sort-Object name
             $oldGroupUser = $oldGroupUser.Name.replace(' ','')
             
@@ -331,7 +339,7 @@ Start-PodeServer {
             Write-PodeJsonResponse -Value @{
                 message = "Changement de groupe effectué avec succès" 
             }
-            Set-PodeResponseStatus -Code 204 -ContentType 'application/json'
+            Set-PodeResponseStatus -Code 204 -ContentType 'application/json' -NoErrorPage
         }
         catch{
             # En cas d'erreur
@@ -426,8 +434,15 @@ Start-PodeServer {
 
             $droits =  $WebEvent.Data.droits
 
+            $currentAccess = Get-ChildItem -Path $dossierPath | Get-NTFSEffectiveAccess -Account "SERVER-AD\$poste" | Select-Object Account,Fullname,AccessRights
+
+            if ($currentAccess.AccessRights -ne $null) {
+                # Supprimer les anciennes permissions
+                Remove-NTFSAccess -Path $dossierPath -Account "SERVER-AD\$poste" -AccessRights $currentAccess.AccessRights -AppliesTo ThisFolderAndSubfolders
+            }
+
             # Ajouter les droits de poste sur le dossier et sous-dossiers (niveau 1)
-            Add-NTFSAccess -Path $dossierPath -Account "SERVER-AD\$poste" -AccessRights $droits -AppliesTo ThisFolderAndSubfoldersOneLevel
+            Add-NTFSAccess -Path $dossierPath -Account "SERVER-AD\$poste" -AccessRights $droits -AppliesTo ThisFolderAndSubfolders
 
             Set-PodeResponseStatus -Code 200 -ContentType 'application/json'
         }
