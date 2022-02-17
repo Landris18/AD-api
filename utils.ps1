@@ -33,13 +33,17 @@
 #     Get-Process
 # }
 
-#$thePath = "C:\Users\Landry LD\Music"
-#$dossiers = Get-ChildItem $thePath -Recurse 
-#$groupList = ("LANDRIS18\Landry LD","BUILTIN\Administrateurs" )
-#$access_eff = Get-ChildItem -Path $thePath | Get-NTFSEffectiveAccess -Account $group | Select-Object Account,Fullname,AccessRights 
+# $thePath = "C:\Users\Landry LD\Music"
+# $dossiers = Get-ChildItem $thePath -Recurse 
+# $groupList = ("LANDRIS18\Landry LD","BUILTIN\Administrateurs" )
+# $access_eff = Get-ChildItem -Path $thePath | Get-NTFSEffectiveAccess -Account $group | Select-Object Account,Fullname,AccessRights 
 
 # $env:VARIABLE="variable" (Creating and editing)
 # Remove-Item env:variable (Removing)
 # dir env: (Listing)
 
 # $s = New-PSSession -ComputerName "WIN-IP4ACBPGSOO"
+
+# Création de la variable d'environnement SECRET pour la création de JWT
+# $value = Get-Date -Format o | ForEach-Object { $_ -replace ":", "." }
+# $env:SECRET = $value
