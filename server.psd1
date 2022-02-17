@@ -19,4 +19,5 @@
     EndpointName = "AD-api"
     Domain = "server-ad.map"
     OU = "Futurmap DATA"
+    Secret = "THE_SECRET_KEY"
 }
