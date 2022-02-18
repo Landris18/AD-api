@@ -1,4 +1,4 @@
-# Récupération du nom de la machine 
+# Récupération du nom de la machine (Le serveur) 
 $hostname = hostname.exe
 
 # Importation des modules dans la session su serveur
@@ -7,7 +7,7 @@ Invoke-Command -ScriptBlock {Import-Module -Name ActiveDirectory} -Session $s
 Invoke-Command -ScriptBlock {Import-Module -Name NTFSSecurity} -Session $s
 
 
-# Allumer le serveur api
+# Démarrer le serveur api
 Start-PodeServer {
 
     # Récupération des variables de configuration depuis le fichier server.psd1
@@ -17,7 +17,6 @@ Start-PodeServer {
     $endpointname = (Get-PodeConfig).EndpointName
     $domain = (Get-PodeConfig).Domain
     $ou = (Get-PodeConfig).OU
-    $secret = (Get-PodeConfig).Secret
 
     $domainName = (Get-PodeConfig).Domain.split(".")[0]
     $domainExtension = (Get-PodeConfig).Domain.split(".")[1]
@@ -28,7 +27,7 @@ Start-PodeServer {
     Function encodeToken{
 
         param($username)
-
+        
         $header = @{
             alg = 'hs256'
             typ = 'JWT'
@@ -40,7 +39,7 @@ Start-PodeServer {
             exp = ([System.DateTimeOffset]::Now.AddDays(1).ToUnixTimeSeconds())
         }
 
-        return ConvertTo-PodeJwt -Header $header -Payload $payload -Secret $env:SECRET
+        return ConvertTo-PodeJwt -Header $header -Payload $payload -Secret (Get-PodeConfig).Secret
     }
 
 
@@ -50,7 +49,7 @@ Start-PodeServer {
         param($token)
 
         try{
-            return ConvertFrom-PodeJwt -Token $token -Secret $env:SECRET
+            return ConvertFrom-PodeJwt -Token $token -Secret (Get-PodeConfig).Secret
         }
         catch{
             return @{sub = 0}
@@ -89,7 +88,7 @@ Start-PodeServer {
     }
 
 
-    # Fonction permettant de récupérer tous les dossiers et leurs accès
+    # Fonction permettant de récupérer tous les dossiers des lecteurs et leurs accès
     Function get_all_folders_access {
 
         # Récupération des groupes dans l'annuaire dans l'OU Futurmap DATA
@@ -186,12 +185,6 @@ Start-PodeServer {
         return $null
     }
 
-
-    # La route principale du serveur
-    Add-PodeRoute -Method Get -Path "/api" -EndpointName $endpointname -Authentication 'Authenticate' -ScriptBlock {
-        Write-PodeJsonResponse -Value @{ Bienvenu = "Vous êtes sur un serveur active directory"}
-    }
-
     
     # Authentification sur l'active directory pour récupérer un token JWT
     Add-PodeRoute -Method Post -Path '/api/login' -EndpointName $endpointname -Authentication 'Login' -ScriptBlock {
@@ -217,6 +210,12 @@ Start-PodeServer {
         }
     }
 
+
+    # La route principale du serveur
+    Add-PodeRoute -Method Get -Path "/api" -EndpointName $endpointname -Authentication 'Authenticate' -ScriptBlock {
+        Write-PodeJsonResponse -Value @{ Bienvenu = "Vous êtes sur un serveur active directory"}
+    }
+    
 
     # Création d'un utilisateur dans l'annuaire active directory et ajout de celui-ci dans un groupe
     Add-PodeRoute -Method Post -Path '/api/create_user' -EndpointName $endpointname -ScriptBlock {
@@ -293,7 +292,7 @@ Start-PodeServer {
 
             # Ajouter les permissions de groupe aux dossiers et permettre au groupe de voir et lire les tous les lecteurs
             foreach ($ac in $access) {
-                Add-NTFSAccess -Path $ac.dossier -Account "SERVER-AD\$account" -AccessRights $ac.permission -AppliesTo ThisFolderAndSubfolders
+                Add-NTFSAccess -Path $ac.dossier -Account "SERVER-AD\$account" -AccessRights $ac.permission -AppliesTo ThisFolderSubfoldersAndFiles
                 foreach ($dr in $drives) {
                     Add-NTFSAccess -Path $dr.path -Account "SERVER-AD\$account" -AccessRights "ReadAndExecute" -AppliesTo ThisFolderOnly
                 }
@@ -434,15 +433,11 @@ Start-PodeServer {
 
             $droits =  $WebEvent.Data.droits
 
-            $currentAccess = Get-ChildItem -Path $dossierPath | Get-NTFSEffectiveAccess -Account "SERVER-AD\$poste" | Select-Object Account,Fullname,AccessRights
+            # Supprimer les anciennes permissions
+            Remove-NTFSAccess -Path $dossierPath -Account "SERVER-AD\$poste" -AccessRights "FullControl,Modify,ReadAndExecute,Read,Write,ListDirectory" -AppliesTo ThisFolderSubfoldersAndFiles
 
-            if ($currentAccess.AccessRights -ne $null) {
-                # Supprimer les anciennes permissions
-                Remove-NTFSAccess -Path $dossierPath -Account "SERVER-AD\$poste" -AccessRights $currentAccess.AccessRights -AppliesTo ThisFolderAndSubfolders
-            }
-
-            # Ajouter les droits de poste sur le dossier et sous-dossiers (niveau 1)
-            Add-NTFSAccess -Path $dossierPath -Account "SERVER-AD\$poste" -AccessRights $droits -AppliesTo ThisFolderAndSubfolders
+            # Ajouter les droits de poste sur le dossier et sous-dossiers et fichiers
+            Add-NTFSAccess -Path $dossierPath -Account "SERVER-AD\$poste" -AccessRights $droits -AppliesTo ThisFolderSubfoldersAndFiles
 
             Set-PodeResponseStatus -Code 200 -ContentType 'application/json'
         }
