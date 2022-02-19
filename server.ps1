@@ -218,7 +218,7 @@ Start-PodeServer {
     
 
     # Création d'un utilisateur dans l'annuaire active directory et ajout de celui-ci dans un groupe
-    Add-PodeRoute -Method Post -Path '/api/create_user' -EndpointName $endpointname -ScriptBlock {
+    Add-PodeRoute -Method Post -Path '/api/create_user' -EndpointName $endpointname -Authentication 'Authenticate' -ScriptBlock {
         
         try{
             # Récupération des informations sur l'utilisateur à créer
@@ -269,7 +269,7 @@ Start-PodeServer {
 
 
     # Création d'un groupe dans l'annuaire active directory
-    Add-PodeRoute -Method Post -Path '/api/create_group' -EndpointName $endpointname -ScriptBlock {
+    Add-PodeRoute -Method Post -Path '/api/create_group' -EndpointName $endpointname -Authentication 'Authenticate' -ScriptBlock {
 
         try{
             # Récupération des informations sur le groupe à créer
@@ -315,7 +315,7 @@ Start-PodeServer {
 
 
     # Changement de groupe d'un utilisateur dans l'annuaire active directory
-    Add-PodeRoute -Method Put -Path '/api/change_user_group' -EndpointName $endpointname -ScriptBlock {
+    Add-PodeRoute -Method Put -Path '/api/change_user_group' -EndpointName $endpointname -Authentication 'Authenticate' -ScriptBlock {
 
         try{
             # Récupération des informations pour changer le groupe de l'utilisateur
@@ -352,7 +352,7 @@ Start-PodeServer {
 
 
     # Récupération des lecteurs
-    Add-PodeRoute -Method Get -Path "/api/get_all_drives" -EndpointName $endpointname -ScriptBlock {
+    Add-PodeRoute -Method Get -Path "/api/get_all_drives" -EndpointName $endpointname -Authentication 'Authenticate' -ScriptBlock {
         try {
             $drives = get_all_drives
             Write-PodeJsonResponse -Value $drives
@@ -370,7 +370,7 @@ Start-PodeServer {
 
 
     # Récupération des dossiers dans un lecteur (niveau 1)
-    Add-PodeRoute -Method Get -Path "/api/get_all_drive_folders/" -EndpointName $endpointname -ScriptBlock {
+    Add-PodeRoute -Method Get -Path "/api/get_all_drive_folders/" -EndpointName $endpointname -Authentication 'Authenticate' -ScriptBlock {
         try {
             $folders = @()
 
@@ -403,7 +403,7 @@ Start-PodeServer {
 
 
     # Récupération de tous les dossiers avec leurs accès
-    Add-PodeRoute -Method Get -Path "/api/get_all_folders_access" -EndpointName $endpointname -ScriptBlock {
+    Add-PodeRoute -Method Get -Path "/api/get_all_folders_access" -EndpointName $endpointname -Authentication 'Authenticate' -ScriptBlock {
 
         try {
             $folders_access = get_all_folders_access
@@ -423,7 +423,7 @@ Start-PodeServer {
 
 
     # Donner un ou plusieurs accès à un groupe
-    Add-PodeRoute -Method Post -Path "/api/grant_access" -EndpointName $endpointname -ScriptBlock {
+    Add-PodeRoute -Method Post -Path "/api/grant_access" -EndpointName $endpointname -Authentication 'Authenticate' -ScriptBlock {
 
         try {
             $poste = $WebEvent.Data.poste
