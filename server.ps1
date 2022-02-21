@@ -236,21 +236,32 @@ Start-PodeServer {
 
             $poste = $WebEvent.Data.poste.replace(' ','')
 
-            # Création de l'utilisateur
-            New-ADUser `
-            -Name $name `
-            -GivenName $nom `
-            -Surname $surnom `
-            -SamAccountName "$surnom($matricule)" `
-            -Path "OU=$using:ou,DC=$using:domainName,DC=$using:domainExtension" `
-            -AccountPassword (ConvertTo-SecureString -AsPlainText "win10**10" -Force) `
-            -UserPrincipalName $UserPrincipalName `
-            -ChangePasswordAtLogon $False `
-            -Enabled $True `
-            -Description $description
+            Start-Transaction
 
-            # Ajouter l'utilisateur dans son groupe
-            Add-ADGroupMember -Identity $poste -Members "$surnom($matricule)"
+            try {
+                # Création de l'utilisateur
+                New-ADUser `
+                -Name $name `
+                -GivenName $nom `
+                -Surname $surnom `
+                -SamAccountName "$surnom($matricule)" `
+                -Path "OU=$using:ou,DC=$using:domainName,DC=$using:domainExtension" `
+                -AccountPassword (ConvertTo-SecureString -AsPlainText "win10**10" -Force) `
+                -UserPrincipalName $UserPrincipalName `
+                -ChangePasswordAtLogon $False `
+                -Enabled $True `
+                -Description $description -UseTransaction
+
+                # Ajouter l'utilisateur dans son groupe
+                Add-ADGroupMember -Identity $poste -Members "$surnom($matricule)" -UseTransaction
+            }
+            catch{
+                # En cas d'erreur
+                Undo-Transation
+                throw $_
+            }
+
+            Complete-Transaction
 
             Write-PodeJsonResponse -Value @{
                 message = "Utilisateur créé avec succès" 
@@ -278,25 +289,36 @@ Start-PodeServer {
             $description = $WebEvent.Data.commentaire
 
             $account = $name.replace(' ','')
+             
+            Start-Transaction
 
-            # Création du groupe
-            New-ADGroup `
-            -Name $name `
-            -SamAccountName $account `
-            -Path "OU=$using:ou,DC=$using:domainName,DC=$using:domainExtension" `
-            -GroupCategory Security `
-            -GroupScope Global `
-            -Description $description
-           
-            $drives = get_all_drives
+            try {
+                # Création du groupe
+                New-ADGroup `
+                -Name $name `
+                -SamAccountName $account `
+                -Path "OU=$using:ou,DC=$using:domainName,DC=$using:domainExtension" `
+                -GroupCategory Security `
+                -GroupScope Global `
+                -Description $description -UseTransaction
+            
+                $drives = get_all_drives
 
-            # Ajouter les permissions de groupe aux dossiers et permettre au groupe de voir et lire les tous les lecteurs
-            foreach ($ac in $access) {
-                Add-NTFSAccess -Path $ac.dossier -Account "SERVER-AD\$account" -AccessRights $ac.permission -AppliesTo ThisFolderSubfoldersAndFiles
-                foreach ($dr in $drives) {
-                    Add-NTFSAccess -Path $dr.path -Account "SERVER-AD\$account" -AccessRights "ReadAndExecute" -AppliesTo ThisFolderOnly
+                # Ajouter les permissions de groupe aux dossiers et permettre au groupe de voir et lire les tous les lecteurs
+                foreach ($ac in $access) {
+                    Add-NTFSAccess -Path $ac.dossier -Account "SERVER-AD\$account" -AccessRights $ac.permission -AppliesTo ThisFolderSubfoldersAndFiles -UseTransaction
+                    foreach ($dr in $drives) {
+                        Add-NTFSAccess -Path $dr.path -Account "SERVER-AD\$account" -AccessRights "ReadAndExecute" -AppliesTo ThisFolderOnly -UseTransaction
+                    }
                 }
             }
+            catch{
+                # En cas d'erreur
+                Undo-Transation
+                throw $_
+            }
+
+            Complete-Transaction
 
             Write-PodeJsonResponse -Value @{
                 message = "Groupe créé avec succès" 
@@ -328,12 +350,23 @@ Start-PodeServer {
             # Récupération de l'ancien groupe de l'utilisateur
             $oldGroupUser = (Get-ADuser -Identity "$surnom($matricule)" -Properties memberof).memberof | Get-ADGroup | Select-Object name | Sort-Object name
             $oldGroupUser = $oldGroupUser.Name.replace(' ','')
-            
-            # Supprimer l'utilisateur de son ancien groupe
-            Remove-ADGroupMember -Identity $oldGroupUser -Members "$surnom($matricule)" -confirm:$false
 
-            # Ajouter l'utilisateur dans son nouveau groupe
-            Add-ADGroupMember -Identity $poste -Members "$surnom($matricule)"
+            Start-Transaction
+            
+            try {
+                # Supprimer l'utilisateur de son ancien groupe
+                Remove-ADGroupMember -Identity $oldGroupUser -Members "$surnom($matricule)" -confirm:$false -UseTransaction
+
+                # Ajouter l'utilisateur dans son nouveau groupe
+                Add-ADGroupMember -Identity $poste -Members "$surnom($matricule)" -UseTransaction
+            }
+            catch{
+                # En cas d'erreur
+                Undo-Transation
+                throw $_
+            }
+
+            Complete-Transaction
 
             Write-PodeJsonResponse -Value @{
                 message = "Changement de groupe effectué avec succès" 
@@ -433,11 +466,22 @@ Start-PodeServer {
 
             $droits =  $WebEvent.Data.droits
 
-            # Supprimer les anciennes permissions
-            Remove-NTFSAccess -Path $dossierPath -Account "SERVER-AD\$poste" -AccessRights "FullControl,Modify,ReadAndExecute,Read,Write,ListDirectory" -AppliesTo ThisFolderSubfoldersAndFiles
+            Start-Transaction 
 
-            # Ajouter les droits de poste sur le dossier et sous-dossiers et fichiers
-            Add-NTFSAccess -Path $dossierPath -Account "SERVER-AD\$poste" -AccessRights $droits -AppliesTo ThisFolderSubfoldersAndFiles
+            try{
+                # Supprimer les anciennes permissions
+                Remove-NTFSAccess -Path $dossierPath -Account "SERVER-AD\$poste" -AccessRights "FullControl,Modify,ReadAndExecute,Read,Write,ListDirectory" -AppliesTo ThisFolderSubfoldersAndFiles -UseTransaction
+
+                # Ajouter les droits de poste sur le dossier et sous-dossiers et fichiers
+                Add-NTFSAccess -Path $dossierPath -Account "SERVER-AD\$poste" -AccessRights $droits -AppliesTo ThisFolderSubfoldersAndFiles -UseTransaction
+            }
+            catch{
+                # En cas d'erreur
+                Undo-Transation
+                throw $_
+            }
+
+            Complete-Transaction
 
             Set-PodeResponseStatus -Code 200 -ContentType 'application/json'
         }
