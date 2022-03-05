@@ -6,12 +6,6 @@
             ShowFiles = $true
         }
     }
-    
-    # Web = @{
-    #     ErrorPages = @{
-    #         ShowExceptions = $true
-    #     }
-    # }
 
     Address = "*"
     Port = 6010
