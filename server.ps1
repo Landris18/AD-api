@@ -177,7 +177,7 @@ Start-PodeServer {
 
 
     # Authentification Bearer utilisant un token JWT
-    New-PodeAuthScheme -Bearer -AsJWT -Secret $secret | Add-PodeAuth -Name 'Authenticate' -Sessionless -ScriptBlock {
+    New-PodeAuthScheme -Bearer -AsJWT -Secret (Get-PodeConfig).Secret | Add-PodeAuth -Name 'Authenticate' -Sessionless -ScriptBlock {
 
         param($payload)
 
