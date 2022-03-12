@@ -1,7 +1,7 @@
 # AD-API 
 
 AD-api est un api permettant la gestion des utilisateurs, des groupes et des accès sur les dossiers d'une annuaire active directory sur un Windows server 2012 R2 via  un ERP.
-
+</br>
 ## Instructions et lancement du serveur
 
 Avant de lancer le serveur, n'oubliez pas de modifier les valeurs contenu dans le fichier de configuration `server.psd1`.</br>
