@@ -170,6 +170,12 @@ Start-PodeServer {
 
     # Création d'un endpoint pour accèder aux routes
     Add-PodeEndpoint -Address $address -Port $port -Protocol $protocol -Name $endpointname
+    
+    Add-PodeMiddleware -name 'Headers' -ScriptBlock{
+        Add-PodeHeader -Name "Acces-Control-Allow-Origin" -Value "*"
+        Add-PodeHeader -Name "Acces-Control-Allow-Methods" -Value "*"
+        Add-PodeHeader -Name "Acces-Control-Allow-Headers" -Value "*"
+    }
 
 
     # Authentification sur l'active directory
@@ -192,6 +198,11 @@ Start-PodeServer {
         return $null
     }
 
+    
+    Add-PodeRoute -Method Options -Path * -ScriptBlock {
+        Set-PodeResponseStatus -Code 200
+    }
+    
     
     # Authentification sur l'active directory pour récupérer un token JWT
     Add-PodeRoute -Method Post -Path '/api/login' -EndpointName $endpointname -Authentication 'Login' -ScriptBlock {
