@@ -43,20 +43,6 @@ Start-PodeServer {
     }
 
 
-    # Fonction permettant de décoder un token JWT pour avoir les données
-    Function decodeToken{
-
-        param($token)
-
-        try{
-            return ConvertFrom-PodeJwt -Token $token -Secret (Get-PodeConfig).Secret
-        }
-        catch{
-            return @{sub = 0}
-        }
-    }
-
-
     # Fonction permettant de récupérer tous les lecteurs
     Function get_all_drives {
         $Reports = Get-GPO -All | Get-GPOReport -ReportType Xml
