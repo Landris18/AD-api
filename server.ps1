@@ -8,7 +8,7 @@ Invoke-Command -ScriptBlock {Import-Module -Name NTFSSecurity} -Session $s
 
 
 # Démarrer le serveur api
-Start-PodeServer {
+Start-PodeServer -Threads 10 {
 
     # Récupération des variables de configuration depuis le fichier server.psd1
     $address = (Get-PodeConfig).Address
@@ -40,6 +40,20 @@ Start-PodeServer {
         }
 
         return ConvertTo-PodeJwt -Header $header -Payload $payload -Secret (Get-PodeConfig).Secret
+    }
+
+
+    # Fonction permettant de décoder un token JWT pour avoir les données
+    Function decodeToken{
+
+        param($token)
+
+        try{
+            return ConvertFrom-PodeJwt -Token $token -Secret (Get-PodeConfig).Secret
+        }
+        catch{
+            return @{sub = 0}
+        }
     }
 
 
@@ -156,11 +170,13 @@ Start-PodeServer {
 
     # Création d'un endpoint pour accèder aux routes
     Add-PodeEndpoint -Address $address -Port $port -Protocol $protocol -Name $endpointname
-    
-    Add-PodeMiddleware -name 'Headers' -ScriptBlock{
-        Add-PodeHeader -Name "Acces-Control-Allow-Origin" -Value "*"
-        Add-PodeHeader -Name "Acces-Control-Allow-Methods" -Value "*"
-        Add-PodeHeader -Name "Acces-Control-Allow-Headers" -Value "*"
+
+
+    # Création des headers pour autoriser les accès
+    Add-PodeMiddleware -name "Headers" -ScriptBlock {
+        Add-PodeHeader -Name "Access-Control-Allow-Origin" -Value "*"
+        Add-PodeHeader -Name "Access-Control-Allow-Methods" -Value "*"
+        Add-PodeHeader -Name "Access-Control-Allow-Headers" -Value "*"
     }
 
 
@@ -184,11 +200,12 @@ Start-PodeServer {
         return $null
     }
 
-    
+
+    # Route permettant d'accepter les preflights
     Add-PodeRoute -Method Options -Path * -ScriptBlock {
         Set-PodeResponseStatus -Code 200
     }
-    
+
     
     # Authentification sur l'active directory pour récupérer un token JWT
     Add-PodeRoute -Method Post -Path '/api/login' -EndpointName $endpointname -Authentication 'Login' -ScriptBlock {
@@ -215,14 +232,14 @@ Start-PodeServer {
     }
 
 
-    # La route principale du serveur
+    # Route principale du serveur
     Add-PodeRoute -Method Get -Path "/api" -EndpointName $endpointname -Authentication 'Authenticate' -ScriptBlock {
         Write-PodeJsonResponse -Value @{ Bienvenu = "Vous êtes sur un serveur active directory"}
     }
     
 
     # Création d'un utilisateur dans l'annuaire active directory et ajout de celui-ci dans un groupe
-    Add-PodeRoute -Method Post -Path '/api/create_user' -EndpointName $endpointname -ScriptBlock {
+    Add-PodeRoute -Method Post -Path '/api/create_user' -EndpointName $endpointname -Authentication 'Authenticate' -ScriptBlock {
         
         try{
             # Récupération des informations sur l'utilisateur à créer
@@ -236,7 +253,7 @@ Start-PodeServer {
             $surnomLower = $surnom.ToLower()
             $UserPrincipalName = "$surnomLower@$using:domain"
 
-            $description = $WebEvent.Data.commentaire
+            $description = $WebEvent.Data.description
 
             $poste = $WebEvent.Data.poste.replace(' ','')
 
@@ -280,7 +297,7 @@ Start-PodeServer {
 
 
     # Création d'un groupe dans l'annuaire active directory
-    Add-PodeRoute -Method Post -Path '/api/create_group' -EndpointName $endpointname -ScriptBlock {
+    Add-PodeRoute -Method Post -Path '/api/create_group' -EndpointName $endpointname -Authentication 'Authenticate' -ScriptBlock {
 
         try{
             # Récupération des informations sur le groupe à créer
@@ -326,7 +343,7 @@ Start-PodeServer {
 
 
     # Changement de groupe d'un utilisateur dans l'annuaire active directory
-    Add-PodeRoute -Method Put -Path '/api/change_user_group' -EndpointName $endpointname -ScriptBlock {
+    Add-PodeRoute -Method Put -Path '/api/change_user_group' -EndpointName $endpointname -Authentication 'Authenticate' -ScriptBlock {
 
         try{
             # Récupération des informations pour changer le groupe de l'utilisateur
@@ -381,7 +398,7 @@ Start-PodeServer {
 
 
     # Récupération des dossiers dans un lecteur (niveau 1)
-    Add-PodeRoute -Method Get -Path "/api/get_all_drive_folders/" -EndpointName $endpointname -ScriptBlock {
+    Add-PodeRoute -Method Get -Path "/api/get_all_drive_folders/" -EndpointName $endpointname -Authentication 'Authenticate' -ScriptBlock {
         try {
             $folders = @()
 
@@ -392,8 +409,8 @@ Start-PodeServer {
                     $dossiers = Get-ChildItem -Path $drive.path
                     foreach ($doss in $dossiers) {
                         $folders = $folders + @{
-                            dossier = $doss.toString().split('\')[-1]
-                            path = $doss.toString()
+                            # dossier = $doss.toString().split('\')[-1]
+                            path = $doss.ToString()
                         }
                     }
                 }
@@ -414,7 +431,7 @@ Start-PodeServer {
 
 
     # Récupération de tous les dossiers avec leurs accès
-    Add-PodeRoute -Method Get -Path "/api/get_all_folders_access" -EndpointName $endpointname -ScriptBlock {
+    Add-PodeRoute -Method Get -Path "/api/get_all_folders_access" -EndpointName $endpointname -Authentication 'Authenticate' -ScriptBlock {
 
         try {
             $folders_access = get_all_folders_access
@@ -434,7 +451,7 @@ Start-PodeServer {
 
 
     # Donner un ou plusieurs accès à un groupe
-    Add-PodeRoute -Method Post -Path "/api/grant_access" -EndpointName $endpointname -ScriptBlock {
+    Add-PodeRoute -Method Post -Path "/api/grant_access" -EndpointName $endpointname -Authentication 'Authenticate' -ScriptBlock {
 
         try {
             $poste = $WebEvent.Data.poste
