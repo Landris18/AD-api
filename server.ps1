@@ -320,7 +320,7 @@ Start-PodeServer -Threads 10 {
 
             # Ajouter les permissions de groupe aux dossiers et permettre au groupe de voir et lire les tous les lecteurs
             foreach ($ac in $access) {
-                Add-NTFSAccess -Path $ac.dossier -Account "SERVER-AD\$account" -AccessRights $ac.permission -AppliesTo ThisFolderSubfoldersAndFiles
+                Add-NTFSAccess -Path $ac.dossier -Account "SERVER-AD\$account" -AccessRights $ac.permissions -AppliesTo ThisFolderSubfoldersAndFiles
                 foreach ($dr in $drives) {
                     Add-NTFSAccess -Path $dr.path -Account "SERVER-AD\$account" -AccessRights "ReadAndExecute" -AppliesTo ThisFolderOnly
                 }
