@@ -156,59 +156,6 @@ Start-PodeServer -Threads 10 {
         return $toor
     }
 
-    Function get_all_group_access {
-        param($group)
-
-        $drives = get_all_drives
-
-        $toor = @()
-
-        foreach($d in $drives) {
-
-            $root = @()
-
-            # Récupération des accès sur les dossiers
-            $access_eff = Get-ChildItem -Path $d.path | Get-NTFSEffectiveAccess -Account "SERVER-AD\$group" | Select-Object Account,Fullname,AccessRights
-        
-            foreach ($doss in $access_eff){
-
-                convertRight($doss.FullName)
-                
-                if ($root.Count -gt 0){
-                    $pare = $true
-                    foreach($r in $root){
-                        if ($r.dossier -eq $doss.Fullname){
-                            $r.Access = $r.Access + @{
-                                permission = $doss.AccessRights.ToString();
-                            }
-                            $pare = $false
-                            break
-                        }
-                    }
-                    if ($pare -eq $true){
-                        $root = $root + 
-                        @{
-                            dossier = $doss.Fullname;
-                            permission = $doss.AccessRights.ToString();
-                        }
-                    }
-                }
-                else{
-                    $root = $root + @{
-                        dossier = $doss.Fullname;
-                        permission = $doss.AccessRights.ToString();
-                    }
-                }
-            }
-            
-            $toor = $toor + @{
-                $d.label = $root
-            }
-            
-        }
-        return $toor
-    }
-
 
     # Fonction permettant de faire le rollback lors d'un echec de création d'un utilisateur
     Function rollBackCreateUser {
@@ -496,30 +443,6 @@ Start-PodeServer -Threads 10 {
             Write-Host $_
             Write-PodeJsonResponse -Value @{
                 response = "Echec de la récupération des dossiers et des accès" 
-            }
-            Set-PodeResponseStatus -Code 400 -ContentType 'application/json' -NoErrorPage
-        }
-
-    }
-
-
-    # Récupération de tous les accès d'un groupe
-    Add-PodeRoute -Method Get -Path "/api/get_all_group_access/" -EndpointName $endpointname  -ScriptBlock {
-
-        try {
-
-            if ($WebEvent.Query['group']) {
-                $group_access = get_all_group_access($WebEvent.Query['group'])
-            }
-            Write-PodeJsonResponse -Value $group_access
-            Set-PodeResponseStatus -Code 200 -ContentType 'application/json'
-
-        }
-        catch{
-            # En cas d'erreur
-            Write-Host $_
-            Write-PodeJsonResponse -Value @{
-                response = "Echec de la récupération des accès du dossier" 
             }
             Set-PodeResponseStatus -Code 400 -ContentType 'application/json' -NoErrorPage
         }
