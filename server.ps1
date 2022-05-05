@@ -504,7 +504,7 @@ Start-PodeServer -Threads 10 {
 
 
     # Récupération de tous les accès d'un groupe
-    Add-PodeRoute -Method Get -Path "/api/get_all_group_access/" -EndpointName $endpointname  -ScriptBlock {
+    Add-PodeRoute -Method Get -Path "/api/get_all_group_access/" -EndpointName $endpointname -Authentication 'Authenticate' -ScriptBlock {
 
         try {
 
