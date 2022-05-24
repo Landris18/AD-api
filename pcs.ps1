@@ -1,3 +1,5 @@
+clear
+
 Get-Variable -Exclude PWD, *Preference | Remove-Variable -EA 0
  
 $keyList = @()
